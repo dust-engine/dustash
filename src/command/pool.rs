@@ -95,6 +95,7 @@ impl Drop for CommandPool {
     }
 }
 
+// vk::CommandBuffer in Initial state.
 pub struct CommandBuffer<'a> {
     pub(crate) pool: &'a mut CommandPool,
     pub(crate) buffer: vk::CommandBuffer,
