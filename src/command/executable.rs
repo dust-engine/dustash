@@ -2,7 +2,7 @@ use ash::prelude::VkResult;
 
 use super::recorder::CommandRecorder;
 
-pub struct CommandExecutable<'a> {
+pub struct CommandExecutable {
     pub(crate) recorder: CommandRecorder<'a>,
 }
 

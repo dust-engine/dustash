@@ -4,6 +4,8 @@ use std::{ops::Deref, sync::Arc, collections::HashMap};
 pub mod command;
 pub mod queue;
 
+use queue::Queue;
+
 pub struct Instance {
     entry: Arc<ash::Entry>,
     instance: ash::Instance,
@@ -119,9 +121,4 @@ impl Drop for Device {
             self.device.destroy_device(None);
         }
     }
-}
-
-pub struct Queue {
-    device: Arc<Device>,
-    queue: vk::Queue,
 }
