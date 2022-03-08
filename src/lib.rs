@@ -1,8 +1,16 @@
+#![feature(into_future)]
+#![feature(type_alias_impl_trait)]
+#![feature(negative_impls)]
+#![feature(array_methods)]
+#![feature(maybe_uninit_uninit_array)]
+
 use ash::{prelude::VkResult, vk};
-use std::{ops::Deref, sync::Arc, collections::HashMap};
+use std::{collections::HashMap, ops::Deref, sync::Arc, ffi::CStr};
 
 pub mod command;
+pub mod fence;
 pub mod queue;
+pub mod resources;
 
 use queue::Queue;
 
@@ -64,35 +72,50 @@ impl PhysicalDevice {
             .collect();
         Ok(results)
     }
-    pub fn create_device(&self, info: &vk::DeviceCreateInfo) -> VkResult<(Arc<Device>, HashMap<u32, Vec<Queue>>)> {
+    pub fn get_queue_family_properties(&self) -> Vec<vk::QueueFamilyProperties> {
+        unsafe {
+            self.instance
+                .get_physical_device_queue_family_properties(self.physical_device)
+        }
+    }
+    pub fn create_device(
+        &self,
+        enabled_layers: &[&CStr],
+        enabled_extensions: &[&CStr],
+        enabled_features: &vk::PhysicalDeviceFeatures,
+    ) -> VkResult<(Arc<Device>, crate::queue::Queues)> {
+        let queue_create_info = queue::QueuesCreateInfo::find(self);
+        let queue_create_infos = queue_create_info.queue_create_infos();
+        let create_info = vk::DeviceCreateInfo {
+            queue_create_info_count: queue_create_infos.len() as u32,
+            p_queue_create_infos: queue_create_infos.as_ptr(),
+
+            enabled_layer_count: enabled_layers.len() as u32,
+            pp_enabled_layer_names: enabled_layers.as_ptr() as *const *const i8,
+
+            enabled_extension_count: enabled_extensions.len() as u32,
+            pp_enabled_extension_names: enabled_extensions.as_ptr() as *const *const i8,
+
+            p_enabled_features: enabled_features,
+            ..Default::default()
+        };
+
         // Safety: No Host Syncronization rules for VkCreateDevice.
         // Device retains a reference to Instance, ensuring that Instance is dropped later than Device.
         let device = unsafe {
             self.instance
-                .create_device(self.physical_device, info, None)?
+                .create_device(self.physical_device, &create_info, None)?
         };
         let device = Arc::new(Device {
             instance: self.instance.clone(),
             device,
         });
 
-        // Safety: We create vkQueues from vk::DeviceCreateInfo, ensure that there's only one copy of Queue for each queue.
-        // It is not OK to create multiple copies of Queue, since queue operations require exclusive access to Queue.
-        let result: HashMap<u32, Vec<Queue>> = unsafe {
-            let queue_create_infos = std::slice::from_raw_parts(info.p_queue_create_infos, info.queue_create_info_count as usize);
-            queue_create_infos.iter().map(|create_info| {
-                let queue_family_index = create_info.queue_family_index;
-                let queues: Vec<Queue> = (0..create_info.queue_count).map(|queue_index| {
-                    let queue = device.get_device_queue(queue_family_index, queue_index);
-                    Queue {
-                        device: device.clone(),
-                        queue
-                    }
-                }).collect::<Vec<Queue>>();
-                (queue_family_index, queues)
-            }).collect()
+        let queues = unsafe {
+            // Safe because this is only called once per device.
+            crate::queue::Queues::from_device(&device, &queue_create_info)
         };
-        Ok((device, result))
+        Ok((device, queues))
     }
 }
 

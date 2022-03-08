@@ -7,3 +7,7 @@ edition = "2021"
 
 [dependencies]
 ash = "0.36"
+blocking = { path = "../blocking" }
+crossbeam = "0.8"
+futures = "0.3"
+smallvec = "1.8"
