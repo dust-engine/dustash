@@ -5,7 +5,7 @@
 #![feature(maybe_uninit_uninit_array)]
 
 use ash::{prelude::VkResult, vk};
-use std::{collections::HashMap, ops::Deref, sync::Arc, ffi::CStr};
+use std::{collections::HashMap, ffi::CStr, ops::Deref, sync::Arc};
 
 pub mod command;
 pub mod fence;

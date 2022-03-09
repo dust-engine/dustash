@@ -11,8 +11,6 @@ use futures::FutureExt;
 
 use crate::{command::recorder::CommandExecutable, fence::Fence};
 
-use self::submission::TimelineSubmission;
-
 use super::{
     semaphore::{Semaphore, TimelineSemaphore},
     Queue,
@@ -44,10 +42,7 @@ impl QueueDispatcher {
         }
     }
     /// Returns a future that resolves after flush() when all submissions in the batch completes.
-    pub fn submit(
-        &self,
-        submission: submission::FencedSubmission,
-    ) -> impl Future<Output = VkResult<()>> {
+    pub fn submit(&self, submission: submission::Submission) -> impl Future<Output = VkResult<()>> {
         // submission actually borrows the FencedSubmission here by taking the raw handles of semaphores and fences.
         // We need to ensure that FencedSubmission outlives borrowed_submission.
         let borrowed_submission = QueueSubmission {
@@ -92,51 +87,6 @@ impl QueueDispatcher {
         }
     }
 
-    /// Returns a future that resolves after flush() when this particular submission finishes.
-    pub fn submit_timeline(
-        &self,
-        submission: submission::TimelineSubmission,
-    ) -> impl Future<Output = VkResult<()>> {
-        // submission actually borrows the FencedSubmission here by taking the raw handles of semaphores and fences.
-        // We need to ensure that FencedSubmission outlives borrowed_submission.
-        let borrowed_submission = QueueSubmission {
-            wait_semaphores: submission
-                .wait_semaphores
-                .iter()
-                .map(|waits| vk::SemaphoreSubmitInfo {
-                    semaphore: waits.semaphore.semaphore,
-                    stage_mask: waits.stage_mask,
-                    value: waits.value,
-                    ..Default::default()
-                })
-                .collect(),
-            signal_semaphores: vec![vk::SemaphoreSubmitInfo {
-                semaphore: submission.signal_semaphore.semaphore.semaphore,
-                stage_mask: submission.signal_semaphore.stage_mask,
-                ..Default::default()
-            }],
-            command_buffers: submission
-                .executables
-                .iter()
-                .map(|exe| vk::CommandBufferSubmitInfo {
-                    command_buffer: exe.command_buffer.buffer,
-                    ..Default::default()
-                })
-                .collect(),
-        };
-
-        self.submission_count.fetch_add(1, Ordering::Relaxed);
-        self.submissions.push(borrowed_submission);
-
-        // TODO: wait on timeline semaphore instead.
-        let fence = self.fence_task.clone();
-        async move {
-            fence.await?;
-            drop(submission);
-            Ok(())
-        }
-    }
-
     pub fn flush(&mut self) -> VkResult<()> {
         let num_submissions = *self.submission_count.get_mut();
         *self.submission_count.get_mut() = 0;
@@ -175,27 +125,15 @@ impl QueueDispatcher {
 
 pub mod submission {
     use super::*;
-    pub struct BinarySemaphoreOp {
-        pub semaphore: Arc<Semaphore>,
-        pub stage_mask: vk::PipelineStageFlags2,
-    }
-
-    pub struct TimelineSemaphoreOp {
+    pub struct SemaphoreOp {
         pub semaphore: Arc<Semaphore>,
         pub stage_mask: vk::PipelineStageFlags2,
         pub value: u64,
     }
-
-    pub struct FencedSubmission {
-        pub wait_semaphores: Vec<BinarySemaphoreOp>,
+    pub struct Submission {
+        pub wait_semaphores: Vec<SemaphoreOp>,
         pub executables: Vec<CommandExecutable>,
-        pub signal_semaphore: Vec<BinarySemaphoreOp>,
-    }
-
-    pub struct TimelineSubmission {
-        pub wait_semaphores: Vec<TimelineSemaphoreOp>,
-        pub executables: Vec<CommandExecutable>,
-        pub signal_semaphore: TimelineSemaphoreOp,
+        pub signal_semaphore: Vec<SemaphoreOp>,
     }
 }
 

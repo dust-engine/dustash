@@ -4,7 +4,7 @@ use ash::vk;
 
 use crate::{Device, PhysicalDevice};
 
-use super::{dispatcher::{submission::FencedSubmission, QueueDispatcher}, Queue};
+use super::{dispatcher::QueueDispatcher, Queue};
 
 #[derive(Clone, Copy)]
 pub enum QueueType {
@@ -15,11 +15,20 @@ pub enum QueueType {
 }
 
 impl QueueType {
-    pub fn priority(&self) -> &'static f32{
-        [&QUEUE_PRIORITY_HIGH,&QUEUE_PRIORITY_HIGH, &QUEUE_PRIORITY_MID, &QUEUE_PRIORITY_LOW][*self as usize]
+    pub fn priority(&self) -> &'static f32 {
+        [
+            &QUEUE_PRIORITY_HIGH,
+            &QUEUE_PRIORITY_HIGH,
+            &QUEUE_PRIORITY_MID,
+            &QUEUE_PRIORITY_LOW,
+        ][*self as usize]
     }
 }
 
+/// A collection of QueueDispatcher. It creates manages a number of QueueDispatcher based on the device-specific queue flags.
+/// On submission, it routes the submission to the queue with the minimal number of declared capabilities.
+///
+/// The current implementation creates at most one queue for each queue family.
 pub struct Queues {
     queues: Vec<QueueDispatcher>,
     queue_type_to_dispatcher: [usize; 4],
@@ -35,19 +44,22 @@ impl Queues {
 impl Queues {
     // Safety: Can only be called once for each device.
     pub(crate) unsafe fn from_device(device: &Arc<Device>, create_info: &QueuesCreateInfo) -> Self {
-        let queue_dispatchers: Vec<QueueDispatcher> = create_info.queue_create_infos().iter().map(|queue_create_info| {
-            let queue = device.get_device_queue(queue_create_info.queue_family_index, 0); // We always just create at most one queue for each queue family
-            let queue = Queue {
-                device: device.clone(),
-                queue,
-                family_index: queue_create_info.queue_family_index,
-            };
-            QueueDispatcher::new(queue)
-        })
-        .collect();
+        let queue_dispatchers: Vec<QueueDispatcher> = create_info
+            .queue_create_infos()
+            .iter()
+            .map(|queue_create_info| {
+                let queue = device.get_device_queue(queue_create_info.queue_family_index, 0); // We always just create at most one queue for each queue family
+                let queue = Queue {
+                    device: device.clone(),
+                    queue,
+                    family_index: queue_create_info.queue_family_index,
+                };
+                QueueDispatcher::new(queue)
+            })
+            .collect();
         Queues {
             queues: queue_dispatchers,
-            queue_type_to_dispatcher: create_info.queue_type_to_queues_index
+            queue_type_to_dispatcher: create_info.queue_type_to_queues_index,
         }
     }
 }
@@ -69,7 +81,9 @@ impl QueuesCreateInfo {
         let available_queue_family = physical_device.get_queue_family_properties();
         Self::find_with_queue_family_properties(&available_queue_family)
     }
-    fn find_with_queue_family_properties(available_queue_family: &[vk::QueueFamilyProperties]) -> QueuesCreateInfo {
+    fn find_with_queue_family_properties(
+        available_queue_family: &[vk::QueueFamilyProperties],
+    ) -> QueuesCreateInfo {
         let graphics_queue_family = available_queue_family
             .iter()
             .enumerate()
@@ -152,13 +166,15 @@ impl QueuesCreateInfo {
             transfer_queue_family,
             sparse_binding_queue_family,
         ];
-    
+
         let mut queue_type_to_queues_index: [usize; 4] = [0; 4];
-        let mut create_infos: [MaybeUninit<vk::DeviceQueueCreateInfo>; 4] = MaybeUninit::uninit_array(); // (queue_family, QueueType)
+        let mut create_infos: [MaybeUninit<vk::DeviceQueueCreateInfo>; 4] =
+            MaybeUninit::uninit_array(); // (queue_family, QueueType)
         let mut num_queue_families: usize = 0;
 
         let mut push_queue_type = |ty: QueueType| {
-            let create_infos_slice: &mut [vk::DeviceQueueCreateInfo] = unsafe { std::mem::transmute(&mut create_infos[..num_queue_families]) };
+            let create_infos_slice: &mut [vk::DeviceQueueCreateInfo] =
+                unsafe { std::mem::transmute(&mut create_infos[..num_queue_families]) };
 
             let queue_family = queue_type_to_family[ty as usize];
             let entry = create_infos_slice
@@ -169,7 +185,7 @@ impl QueuesCreateInfo {
                 // For this queue type, we've already created a queue.
                 // Increase its priority if needed, and record the queue index used for this queue type.
                 // This dereference is safe, because entry.p_queue_priorities is assumed to be 'static
-                if unsafe{*entry.p_queue_priorities} < *ty.priority() {
+                if unsafe { *entry.p_queue_priorities } < *ty.priority() {
                     // Safe because ty.priority() returns a &'static f32
                     entry.p_queue_priorities = ty.priority();
                 }
@@ -201,11 +217,10 @@ impl QueuesCreateInfo {
     }
 
     pub fn queue_create_infos(&self) -> &[vk::DeviceQueueCreateInfo] {
-        let slice: &[MaybeUninit<vk::DeviceQueueCreateInfo>] = &self.create_infos[0..self.num_queues as usize];
+        let slice: &[MaybeUninit<vk::DeviceQueueCreateInfo>] =
+            &self.create_infos[0..self.num_queues as usize];
 
         // Safe. self.num_queues number of queues are initialized.
-        unsafe {
-            std::mem::transmute(slice)
-        }
+        unsafe { std::mem::transmute(slice) }
     }
 }

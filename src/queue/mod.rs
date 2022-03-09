@@ -4,12 +4,12 @@ mod semaphore;
 mod timeline;
 use crate::{command::recorder::CommandExecutable, fence::Fence, Device};
 use ash::{prelude::VkResult, vk};
+pub use router::{Queues, QueuesCreateInfo};
 use std::{
     future::{Future, IntoFuture},
     pin::Pin,
     sync::Arc,
 };
-pub use router::{Queues,QueuesCreateInfo};
 
 pub struct Queue {
     pub(super) device: Arc<Device>,
