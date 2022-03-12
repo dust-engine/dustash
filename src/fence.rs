@@ -27,6 +27,7 @@ impl Fence {
     pub fn signaled(&self) -> VkResult<bool> {
         unsafe { self.device.get_fence_status(self.fence) }
     }
+    /// Blocks until the fence was signaled.
     pub fn wait(&self) -> VkResult<()> {
         unsafe {
             self.device
@@ -98,14 +99,10 @@ impl Drop for Fence {
 impl IntoFuture for Fence {
     type Output = VkResult<()>;
 
-    type Future = blocking::Task<VkResult<()>>;
+    type Future = impl Future<Output = Self::Output>;
 
     fn into_future(self) -> Self::Future {
-        blocking::unblock(move || {
-            let result = self.wait();
-            drop(self);
-            result
-        })
+        blocking::unblock(move || self.wait())
     }
 }
 
@@ -115,6 +112,7 @@ pub struct FenceJoinN<const N: usize> {
 }
 
 impl<const N: usize> FenceJoinN<N> {
+    /// Blocks until all fences are signaled
     pub fn wait(&self) -> VkResult<()> {
         unsafe {
             self.device
@@ -152,6 +150,7 @@ pub struct FenceJoin {
 }
 
 impl FenceJoin {
+    /// Blocks until all fences are signaled
     pub fn wait(&self) -> VkResult<()> {
         unsafe {
             self.device
