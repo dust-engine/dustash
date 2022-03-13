@@ -11,9 +11,11 @@ pub mod command;
 pub mod fence;
 pub mod queue;
 pub mod resources;
+pub mod surface;
+pub mod swapchain;
 
 pub struct Instance {
-    _entry: Arc<ash::Entry>,
+    entry: Arc<ash::Entry>,
     instance: ash::Instance,
 }
 
@@ -21,10 +23,10 @@ impl Instance {
     pub fn create(entry: Arc<ash::Entry>, info: &vk::InstanceCreateInfo) -> VkResult<Self> {
         // Safety: No Host Syncronization rules for vkCreateInstance.
         let instance = unsafe { entry.create_instance(info, None)? };
-        Ok(Instance {
-            _entry: entry,
-            instance,
-        })
+        Ok(Instance { entry, instance })
+    }
+    pub fn entry(&self) -> &Arc<ash::Entry> {
+        &self.entry
     }
 }
 

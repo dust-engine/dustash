@@ -7,10 +7,13 @@ edition = "2021"
 
 [dependencies]
 ash = "0.36"
+raw-window-handle = "0.3.4"
+ash-window = "^0.9"
 crossbeam = "0.8"
 smallvec = "1.8"
 futures-util = "0.3"
-blocking = { version = "^1.1" }
+blocking = "^1.2"
 
 [dev-dependencies]
 cstr = "0.2"
+winit = "0.26"
