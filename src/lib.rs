@@ -79,6 +79,30 @@ impl PhysicalDevice {
                 .get_physical_device_queue_family_properties(self.physical_device)
         }
     }
+    pub fn get_physical_device_properties(&self) -> vk::PhysicalDeviceProperties {
+        unsafe {
+            self.instance
+                .get_physical_device_properties(self.physical_device)
+        }
+    }
+    pub fn get_physical_device_properties2(&self, properties2: &mut vk::PhysicalDeviceProperties2) {
+        unsafe {
+            self.instance
+                .get_physical_device_properties2(self.physical_device, properties2)
+        }
+    }
+    pub fn get_physical_device_features(&self) -> vk::PhysicalDeviceFeatures {
+        unsafe {
+            self.instance
+                .get_physical_device_features(self.physical_device)
+        }
+    }
+    pub fn get_physical_device_features2(&self, features2: &mut vk::PhysicalDeviceFeatures2) {
+        unsafe {
+            self.instance
+                .get_physical_device_features2(self.physical_device, features2)
+        }
+    }
     pub fn create_device(
         &self,
         enabled_layers: &[&CStr],
