@@ -1,20 +1,13 @@
-use std::{
-    future::{Future, IntoFuture},
-    mem::MaybeUninit,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
 use ash::{prelude::VkResult, vk};
 
 use crate::{command::recorder::CommandExecutable, fence::Fence};
 
-use super::{
-    semaphore::{Semaphore, TimelineSemaphore},
-    Queue,
-};
+use super::{semaphore::Semaphore, Queue};
 
 /// Queue operations require exclusive access to the Queue object, and it's usually more
 /// performant to batch queue submissions together.
@@ -118,13 +111,16 @@ impl QueueDispatcher {
             self.queue
                 .submit_raw2(submit_infos.as_slice(), fence.fence)?;
         }
-        Ok(Some(QueueSubmissionFence { fence, submissions }))
+        Ok(Some(QueueSubmissionFence {
+            fence,
+            _submissions: submissions,
+        }))
     }
 }
 
 pub struct QueueSubmissionFence {
     fence: Fence,
-    submissions: Vec<Submission>,
+    _submissions: Vec<Submission>,
 }
 
 impl QueueSubmissionFence {
@@ -144,9 +140,4 @@ pub struct Submission {
     pub wait_semaphores: Vec<SemaphoreOp>,
     pub executables: Vec<CommandExecutable>,
     pub signal_semaphore: Vec<SemaphoreOp>,
-}
-struct QueueSubmission {
-    wait_semaphores: Vec<vk::SemaphoreSubmitInfo>,
-    signal_semaphores: Vec<vk::SemaphoreSubmitInfo>,
-    command_buffers: Vec<vk::CommandBufferSubmitInfo>,
 }

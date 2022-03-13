@@ -5,7 +5,6 @@ use ash::{prelude::VkResult, vk};
 use crate::resources;
 
 use super::pool::CommandBuffer;
-use super::pool::CommandPool;
 
 // A command buffer in Executable state.
 // Once a command buffer was recorded it becomes immutable.

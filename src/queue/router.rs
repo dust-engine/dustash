@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem::MaybeUninit, sync::Arc};
+use std::{mem::MaybeUninit, sync::Arc};
 
 use ash::vk;
 
@@ -65,8 +65,6 @@ impl Queues {
 }
 
 pub struct QueuesCreateInfo {
-    queue_type_to_family: [u32; 4], // Four queue types
-
     create_infos: [MaybeUninit<vk::DeviceQueueCreateInfo>; 4], // Max 4 queues created. Queue family and index.
     num_queues: u32,
     queue_type_to_queues_index: [usize; 4], // Given QueueType, gives the index of the queue.
@@ -209,7 +207,6 @@ impl QueuesCreateInfo {
         push_queue_type(QueueType::SparseBinding);
 
         QueuesCreateInfo {
-            queue_type_to_family,
             create_infos,
             num_queues: num_queue_families as u32,
             queue_type_to_queues_index,

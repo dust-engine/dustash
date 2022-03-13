@@ -5,17 +5,15 @@
 #![feature(maybe_uninit_uninit_array)]
 
 use ash::{prelude::VkResult, vk};
-use std::{collections::HashMap, ffi::CStr, ops::Deref, sync::Arc};
+use std::{ffi::CStr, ops::Deref, sync::Arc};
 
 pub mod command;
 pub mod fence;
 pub mod queue;
 pub mod resources;
 
-use queue::Queue;
-
 pub struct Instance {
-    entry: Arc<ash::Entry>,
+    _entry: Arc<ash::Entry>,
     instance: ash::Instance,
 }
 
@@ -23,7 +21,10 @@ impl Instance {
     pub fn create(entry: Arc<ash::Entry>, info: &vk::InstanceCreateInfo) -> VkResult<Self> {
         // Safety: No Host Syncronization rules for vkCreateInstance.
         let instance = unsafe { entry.create_instance(info, None)? };
-        Ok(Instance { entry, instance })
+        Ok(Instance {
+            _entry: entry,
+            instance,
+        })
     }
 }
 

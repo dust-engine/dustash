@@ -1,6 +1,6 @@
 mod dispatcher;
 mod router;
-mod semaphore;
+pub mod semaphore;
 pub mod timeline;
 use crate::{command::recorder::CommandExecutable, fence::Fence, Device};
 use ash::{prelude::VkResult, vk};

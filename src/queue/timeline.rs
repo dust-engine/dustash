@@ -1,13 +1,13 @@
 use ash::prelude::VkResult;
 use ash::vk;
 use futures_util::{future::join_all, FutureExt};
-use std::{future::Future, pin::Pin, process::Output, sync::Arc};
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use super::{
     dispatcher::{QueueDispatcher, SemaphoreOp, Submission},
     semaphore::{TimelineSemaphore, TimelineSemaphoreOp},
 };
-use crate::{command::recorder::CommandExecutable, queue::semaphore::Semaphore, Device};
+use crate::{command::recorder::CommandExecutable, Device};
 
 type BoxedVkFuture = Pin<Box<dyn Future<Output = VkResult<()>>>>;
 
