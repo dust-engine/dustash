@@ -34,6 +34,9 @@ impl QueueDispatcher {
             submission_count: AtomicUsize::new(0),
         }
     }
+    pub fn family_index(&self) -> u32 {
+        self.queue.family_index
+    }
     /// Returns a future that resolves after flush() when all submissions in the batch completes.
     pub fn submit(&self, submission: Submission) {
         self.submission_count.fetch_add(1, Ordering::Relaxed);

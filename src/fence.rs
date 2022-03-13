@@ -99,9 +99,9 @@ impl Drop for Fence {
 impl IntoFuture for Fence {
     type Output = VkResult<()>;
 
-    type Future = impl Future<Output = Self::Output>;
+    type IntoFuture = impl Future<Output = Self::Output>;
 
-    fn into_future(self) -> Self::Future {
+    fn into_future(self) -> Self::IntoFuture {
         blocking::unblock(move || self.wait())
     }
 }
@@ -137,9 +137,9 @@ impl<const N: usize> Drop for FenceJoinN<N> {
 impl<const N: usize> IntoFuture for FenceJoinN<N> {
     type Output = VkResult<()>;
 
-    type Future = impl Future<Output = VkResult<()>>;
+    type IntoFuture = impl Future<Output = VkResult<()>>;
 
-    fn into_future(self) -> Self::Future {
+    fn into_future(self) -> Self::IntoFuture {
         blocking::unblock(move || self.wait())
     }
 }
@@ -175,9 +175,9 @@ impl Drop for FenceJoin {
 impl IntoFuture for FenceJoin {
     type Output = VkResult<()>;
 
-    type Future = impl Future<Output = VkResult<()>>;
+    type IntoFuture = impl Future<Output = VkResult<()>>;
 
-    fn into_future(self) -> Self::Future {
+    fn into_future(self) -> Self::IntoFuture {
         blocking::unblock(move || self.wait())
     }
 }

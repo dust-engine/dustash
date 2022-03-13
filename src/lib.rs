@@ -56,7 +56,7 @@ pub struct PhysicalDevice {
 }
 
 impl PhysicalDevice {
-    pub fn enumerate(instance: Arc<Instance>) -> VkResult<Vec<Self>> {
+    pub fn enumerate(instance: &Arc<Instance>) -> VkResult<Vec<Self>> {
         // Safety: No Host Syncronization rules for vkEnumeratePhysicalDevices.
         // It should be OK to call this method and obtain multiple copies of VkPhysicalDevice,
         // because nothing except vkDestroyInstance require exclusive access to VkPhysicalDevice.

@@ -1,13 +1,12 @@
 mod dispatcher;
 mod router;
 mod semaphore;
-mod timeline;
+pub mod timeline;
 use crate::{command::recorder::CommandExecutable, fence::Fence, Device};
 use ash::{prelude::VkResult, vk};
 pub use router::{Queues, QueuesCreateInfo};
 use std::{
     future::{Future, IntoFuture},
-    pin::Pin,
     sync::Arc,
 };
 

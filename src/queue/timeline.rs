@@ -20,13 +20,26 @@ pub struct Timeline {
 }
 
 impl Timeline {
-    pub fn new(device: Arc<Device>) -> Timeline {
-        todo!();
+    pub fn new(device: Arc<Device>) -> VkResult<Self> {
+        Ok(Self {
+            parent_semaphore: None,
+            semaphore: Arc::new(TimelineSemaphore::new(device, 0)?),
+            index: 0,
+            finish_task: None,
+        })
     }
+
+    /// wait_stages: Block the execution of these stages until the semaphore was signaled.
+    /// Stages not specified in wait_stages can proceed before the semaphore signal operation.
+    ///
+    /// signal_stages: Block the semaphore signal operation on the completion of these stages.
+    /// The semaphore will be signaled even if other stages are still running.
     pub fn next(
         &mut self,
         queue: &QueueDispatcher,
         executables: Vec<CommandExecutable>,
+        wait_stages: vk::PipelineStageFlags2,
+        signal_stages: vk::PipelineStageFlags2,
     ) -> &mut Self {
         queue.submit(Submission {
             wait_semaphores: if self.index == 0 && self.parent_semaphore.is_none() {
@@ -38,14 +51,14 @@ impl Timeline {
                 let (s, i) = self.semaphore_to_wait();
                 vec![SemaphoreOp {
                     semaphore: s.clone().downgrade_arc(),
-                    stage_mask: vk::PipelineStageFlags2::empty(), // TODO
+                    stage_mask: wait_stages,
                     value: i,
                 }]
             },
             executables,
             signal_semaphore: vec![SemaphoreOp {
                 semaphore: self.semaphore.clone().downgrade_arc(),
-                stage_mask: vk::PipelineStageFlags2::empty(), // TODO
+                stage_mask: signal_stages,
                 value: self.index + 1,
             }],
         });
@@ -53,6 +66,10 @@ impl Timeline {
         self.parent_semaphore = None;
         self
     }
+    /*
+    TODO: For pipelined ops, there might be a need to signal multiple semaphores on multiple pipeline stages.
+    We need to figure out a way to do this. For example, next() might need to return multiple branches.
+    */
     pub fn then(&mut self, task: impl Future<Output = VkResult<()>> + 'static) -> &mut Self {
         let semaphore_to_wait = if self.index == 0 && self.parent_semaphore.is_none() {
             None
@@ -133,22 +150,35 @@ pub struct TimelineJoin<'a> {
     timelines: Vec<Timeline>,
 }
 impl<'a> TimelineJoin<'a> {
+    /// wait_stages: Block the execution of these stages until the semaphore was signaled.
+    /// Stages not specified in wait_stages can proceed before the semaphore signal operation.
+    ///
+    /// signal_stages: Block the semaphore signal operation on the completion of these stages.
+    /// The semaphore will be signaled even if other stages are still running.
+    ///
+    /// TODO: There might be a need to block different stages of the pipeline on different timeline semaphores.
+    /// We can figure out how to do this later on.
+    ///
+    /// TODO: There might be a need to signal different semaphores on different stages of the pipeline.
+    /// We can figure out how to do this later on.
     pub fn next(
         self,
         queue: &QueueDispatcher,
         executables: Vec<CommandExecutable>,
+        wait_stages: vk::PipelineStageFlags2,
+        signal_stages: vk::PipelineStageFlags2,
     ) -> &'a mut Timeline {
         let (wait_semaphores, futs): (Vec<SemaphoreOp>, Vec<_>) = std::iter::once({
             let (s, i) = self.timeline.semaphore_to_wait();
             let op = SemaphoreOp {
                 semaphore: s.clone().downgrade_arc(),
-                stage_mask: vk::PipelineStageFlags2::empty(),
+                stage_mask: wait_stages,
                 value: i,
             };
             let fut = self.timeline.finish_task.take();
             (op, fut)
         })
-        .chain(self.timelines.into_iter().filter_map(|mut t| {
+        .chain(self.timelines.into_iter().filter_map(|t| {
             if t.parent_semaphore.is_none() && t.index == 0 {
                 return None;
             }
@@ -156,7 +186,7 @@ impl<'a> TimelineJoin<'a> {
 
             let op = SemaphoreOp {
                 semaphore: s.clone().downgrade_arc(),
-                stage_mask: vk::PipelineStageFlags2::empty(),
+                stage_mask: wait_stages,
                 value: i,
             };
             let fut = t.finish_task;
@@ -173,7 +203,7 @@ impl<'a> TimelineJoin<'a> {
             executables,
             signal_semaphore: vec![SemaphoreOp {
                 semaphore: self.timeline.semaphore.clone().downgrade_arc(),
-                stage_mask: vk::PipelineStageFlags2::empty(),
+                stage_mask: signal_stages,
                 value: self.timeline.index + 1,
             }],
         });
@@ -221,8 +251,3 @@ impl<'a> TimelineJoin<'a> {
         self.timeline
     }
 }
-
-// TODO: Mask
-// TODO: unblock timing. only start a new threaded when needed.
-// TODO: tests.
-// TOOD: async optimization. then on CPU task shouldn't need to increment.

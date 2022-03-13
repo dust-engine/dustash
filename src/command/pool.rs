@@ -1,15 +1,17 @@
 use ash::{prelude::VkResult, vk};
 use std::sync::{Arc, Mutex};
 
+use crate::Device;
+
 pub struct CommandPool {
-    pub(crate) device: Arc<ash::Device>,
+    pub(crate) device: Arc<Device>,
     pub(crate) pool: Mutex<vk::CommandPool>,
     pub(crate) queue_family_index: u32,
 }
 
 impl CommandPool {
     pub fn new(
-        device: Arc<ash::Device>,
+        device: Arc<Device>,
         create_info: &vk::CommandPoolCreateInfo,
     ) -> VkResult<CommandPool> {
         // Safety: No Host Syncronization rules for vkCreateCommandPool.
