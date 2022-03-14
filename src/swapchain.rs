@@ -38,6 +38,8 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
+    /// # Safety
+    /// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkCreateSwapchainKHR.html
     pub unsafe fn create(
         loader: Arc<SwapchainLoader>,
         info: &vk::SwapchainCreateInfoKHR,
@@ -47,6 +49,8 @@ impl Swapchain {
     }
     /// Returns (image_index, suboptimal)
     /// Semaphore must be binary semaphore
+    /// # Safety
+    /// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkAcquireNextImageKHR.html
     pub unsafe fn acquire_next_image(
         &self,
         timeout_ns: u64,
@@ -58,8 +62,8 @@ impl Swapchain {
             .acquire_next_image(self.swapchain, timeout_ns, semaphore, fence)
     }
 
-    pub unsafe fn get_swapchain_images(&self) -> VkResult<Vec<vk::Image>> {
-        self.loader.get_swapchain_images(self.swapchain)
+    pub fn get_swapchain_images(&self) -> VkResult<Vec<vk::Image>> {
+        unsafe { self.loader.get_swapchain_images(self.swapchain) }
     }
 }
 

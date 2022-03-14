@@ -25,6 +25,9 @@ impl CommandPool {
             })
         }
     }
+    pub fn queue_family_index(&self) -> u32 {
+        self.queue_family_index
+    }
     pub fn allocate_one(self: Arc<CommandPool>) -> VkResult<CommandBuffer> {
         // Safety: Host Syncronization rule for vkAllocateCommandBuffers:
         // - Host access to pAllocateInfo->commandPool must be externally synchronized.

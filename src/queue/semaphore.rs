@@ -36,8 +36,10 @@ impl TimelineSemaphore {
             .semaphore_type(vk::SemaphoreType::TIMELINE)
             .initial_value(initial_value)
             .build();
-        let mut create_info = vk::SemaphoreCreateInfo::default();
-        create_info.p_next = &type_info as *const _ as *const std::ffi::c_void;
+        let create_info = vk::SemaphoreCreateInfo {
+            p_next: &type_info as *const _ as *const std::ffi::c_void,
+            ..Default::default()
+        };
         let semaphore = unsafe { device.create_semaphore(&create_info, None)? };
         Ok(TimelineSemaphore(Semaphore { device, semaphore }))
     }

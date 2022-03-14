@@ -50,6 +50,8 @@ impl Queue {
         }
     }
 
+    /// # Safety
+    /// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkQueueSubmit.html
     pub unsafe fn submit_raw(
         &mut self,
         submits: &[vk::SubmitInfo],
@@ -57,6 +59,9 @@ impl Queue {
     ) -> VkResult<()> {
         self.device.queue_submit(self.queue, submits, fence)
     }
+
+    /// # Safety
+    /// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkQueueSubmit.html
     pub unsafe fn submit_raw2(
         &mut self,
         submits: &[vk::SubmitInfo2],

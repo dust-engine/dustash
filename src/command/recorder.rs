@@ -11,7 +11,7 @@ use super::pool::CommandBuffer;
 // Submitting a CommandExecutable in Initial state due to pool reset is a no-op.
 pub struct CommandExecutable {
     pub(crate) command_buffer: CommandBuffer,
-    pub(crate) referenced_resources: Vec<Arc<dyn Send + Sync>>,
+    pub(crate) _resource_guards: Vec<Arc<dyn Send + Sync>>,
 }
 
 // vk::CommandBuffer in Recording state.
@@ -58,7 +58,7 @@ impl CommandBuffer {
         drop(pool);
         Ok(CommandExecutable {
             command_buffer: self,
-            referenced_resources,
+            _resource_guards: referenced_resources,
         })
     }
 }

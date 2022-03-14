@@ -2,13 +2,12 @@ use ash::extensions::khr;
 use ash::vk;
 use cstr::cstr;
 use dustash::frames::FrameManager;
-use raw_window_handle::HasRawWindowHandle;
-use std::panic::UnwindSafe;
+
 use std::sync::Arc;
 
 use winit::{
     event::{Event, WindowEvent},
-    event_loop::{self, ControlFlow, EventLoop},
+    event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 fn main() {
@@ -35,7 +34,7 @@ fn main() {
     let instance = Arc::new(instance);
 
     let physical_devices = dustash::PhysicalDevice::enumerate(&instance).unwrap();
-    let (device, queues) = physical_devices[0]
+    let (device, _queues) = physical_devices[0]
         .clone()
         .create_device(
             &[],
@@ -67,7 +66,7 @@ fn main() {
     )
     .unwrap();
     window_update(window, event_loop, move || {
-        let frame = frames.acquire(!0).unwrap();
+        let _frame = frames.acquire(!0).unwrap();
         println!("HELLO");
     });
 }

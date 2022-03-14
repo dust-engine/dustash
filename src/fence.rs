@@ -17,7 +17,7 @@ impl Fence {
     pub fn new(device: Arc<Device>, signaled: bool) -> VkResult<Self> {
         let mut flags = vk::FenceCreateFlags::empty();
         if signaled {
-            flags = flags | vk::FenceCreateFlags::SIGNALED;
+            flags |= vk::FenceCreateFlags::SIGNALED;
         }
         let fence = unsafe {
             device.create_fence(&vk::FenceCreateInfo::builder().flags(flags).build(), None)?

@@ -47,11 +47,7 @@ impl QueueDispatcher {
         let mut signal_semaphore_count: usize = 0;
         let mut executables_count: usize = 0;
         {
-            loop {
-                let op = match self.submissions.pop() {
-                    Some(op) => op,
-                    None => break,
-                };
+            while let Some(op) = self.submissions.pop() {
                 wait_semaphore_count += op.wait_semaphores.len();
                 signal_semaphore_count += op.signal_semaphore.len();
                 executables_count += op.executables.len();

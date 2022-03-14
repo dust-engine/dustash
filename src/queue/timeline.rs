@@ -190,11 +190,11 @@ impl<'a> TimelineJoin<'a> {
                 value: i,
             };
             let fut = t.finish_task;
-            return Some((op, fut));
+            Some((op, fut))
         }))
         .unzip();
 
-        let joined_fut = join_all(futs.into_iter().filter_map(|x| x))
+        let joined_fut = join_all(futs.into_iter().flatten())
             .map(|results| results.into_iter().find(|r| r.is_err()).unwrap_or(Ok(())));
         self.timeline.finish_task = Some(Box::pin(joined_fut));
 
@@ -233,11 +233,11 @@ impl<'a> TimelineJoin<'a> {
                 value: i,
             };
             let fut = t.finish_task;
-            return Some((op, fut));
+            Some((op, fut))
         }))
         .unzip();
 
-        let joined_fut = join_all(futs.into_iter().filter_map(|x| x))
+        let joined_fut = join_all(futs.into_iter().flatten())
             .map(|results| results.into_iter().find(|r| r.is_err()).unwrap_or(Ok(())));
         let fut = async {
             joined_fut.await?;
