@@ -1,9 +1,16 @@
 use ash::extensions::khr;
 use ash::vk;
 use cstr::cstr;
+use dustash::frames::FrameManager;
 use raw_window_handle::HasRawWindowHandle;
+use std::panic::UnwindSafe;
 use std::sync::Arc;
 
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{self, ControlFlow, EventLoop},
+    window::WindowBuilder,
+};
 fn main() {
     let entry = unsafe { ash::Entry::load().unwrap() };
     let entry = Arc::new(entry);
@@ -30,18 +37,13 @@ fn main() {
     let physical_devices = dustash::PhysicalDevice::enumerate(&instance).unwrap();
     let (device, queues) = physical_devices[0]
         .clone()
-        .create_device(&[], &[], &vk::PhysicalDeviceFeatures::default())
+        .create_device(
+            &[],
+            &[khr::Swapchain::name()],
+            &vk::PhysicalDeviceFeatures::default(),
+        )
         .unwrap();
 
-    window_update(instance, || {});
-}
-
-fn window_update(instance: Arc<dustash::Instance>, update_fn: impl Fn() -> () + 'static) {
-    use winit::{
-        event::{Event, WindowEvent},
-        event_loop::{ControlFlow, EventLoop},
-        window::WindowBuilder,
-    };
     let event_loop = EventLoop::new();
 
     let window = WindowBuilder::new()
@@ -51,8 +53,30 @@ fn window_update(instance: Arc<dustash::Instance>, update_fn: impl Fn() -> () + 
         .unwrap();
 
     let surface_loader = Arc::new(dustash::surface::SurfaceLoader::new(instance.clone()));
+    let swapchain_loader = Arc::new(dustash::swapchain::SwapchainLoader::new(device.clone()));
     let surface = dustash::surface::Surface::create(surface_loader, &window).unwrap();
+    let surface = Arc::new(surface);
+    let mut frames = FrameManager::new(
+        swapchain_loader,
+        surface,
+        dustash::frames::Options::default(),
+        vk::Extent2D {
+            width: 1280,
+            height: 720,
+        },
+    )
+    .unwrap();
+    window_update(window, event_loop, move || {
+        let frame = frames.acquire(!0).unwrap();
+        println!("HELLO");
+    });
+}
 
+fn window_update(
+    window: winit::window::Window,
+    event_loop: EventLoop<()>,
+    mut update_fn: impl FnMut() -> () + 'static,
+) {
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Wait;
         match event {
