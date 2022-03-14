@@ -114,10 +114,9 @@ impl PhysicalDevice {
         enabled_features: &vk::PhysicalDeviceFeatures,
     ) -> VkResult<(Arc<Device>, crate::queue::Queues)> {
         let queue_create_info = queue::QueuesCreateInfo::find(&self);
-        let queue_create_infos = queue_create_info.queue_create_infos();
         let create_info = vk::DeviceCreateInfo {
-            queue_create_info_count: queue_create_infos.len() as u32,
-            p_queue_create_infos: queue_create_infos.as_ptr(),
+            queue_create_info_count: queue_create_info.create_infos.len() as u32,
+            p_queue_create_infos: queue_create_info.create_infos.as_ptr(),
 
             enabled_layer_count: enabled_layers.len() as u32,
             pp_enabled_layer_names: enabled_layers.as_ptr() as *const *const i8,

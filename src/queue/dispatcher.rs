@@ -7,22 +7,24 @@ use ash::{prelude::VkResult, vk};
 
 use crate::{command::recorder::CommandExecutable, fence::Fence};
 
-use super::{semaphore::Semaphore, Queue};
+use super::{semaphore::Semaphore, Queue, QueueType};
 
 /// Queue operations require exclusive access to the Queue object, and it's usually more
 /// performant to batch queue submissions together.
 /// The QueueDispatcher provides shared references to a Queue, and acts like a buffer
 /// so that the queue operations can be submitted in batch on a frame-to-frame basis.
 pub struct QueueDispatcher {
-    queue: Queue,
+    pub(crate) queue: Queue,
+    assigned_queue_type: Option<QueueType>,
     submissions: crossbeam::queue::SegQueue<Submission>,
     submission_count: AtomicUsize,
 }
 
 impl QueueDispatcher {
-    pub fn new(queue: Queue) -> Self {
+    pub fn new(queue: Queue, assigned_type: Option<QueueType>) -> Self {
         QueueDispatcher {
             queue,
+            assigned_queue_type: assigned_type,
             submissions: crossbeam::queue::SegQueue::new(),
             submission_count: AtomicUsize::new(0),
         }
@@ -35,6 +37,8 @@ impl QueueDispatcher {
         self.submission_count.fetch_add(1, Ordering::Relaxed);
         self.submissions.push(submission);
     }
+
+    // TODO: bind_sparse
 
     pub fn flush(&mut self) -> VkResult<Option<QueueSubmissionFence>> {
         let num_submissions = *self.submission_count.get_mut();
