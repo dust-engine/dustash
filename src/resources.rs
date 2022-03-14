@@ -14,9 +14,19 @@ impl Drop for Buffer {
     }
 }
 
+pub trait HasImage {
+    fn raw_image(&self) -> vk::Image;
+}
+
 pub struct Image {
     device: Arc<ash::Device>,
     pub(crate) image: vk::Image,
+}
+
+impl HasImage for Image {
+    fn raw_image(&self) -> vk::Image {
+        self.image
+    }
 }
 
 impl Drop for Image {

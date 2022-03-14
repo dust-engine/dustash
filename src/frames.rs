@@ -1,5 +1,6 @@
-use crate::swapchain::Swapchain;
+use crate::queue::{QueueType, QueuesCreateInfo};
 use crate::Device;
+use crate::{resources::HasImage, swapchain::Swapchain};
 use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ pub struct FrameManager {
     swapchain_loader: Arc<SwapchainLoader>,
     swapchain: Option<Arc<Swapchain>>,
     surface: Arc<Surface>,
+    present_queue_family: u32,
 
     options: Options,
 
@@ -55,6 +57,23 @@ impl FrameManager {
                 })
             })
             .collect::<VkResult<Vec<Frame>>>()?;
+
+        let queue_info = QueuesCreateInfo::find(swapchain_loader.device().physical_device());
+        let present_queue_family =
+            std::iter::once(queue_info.queue_family_index_for_type(QueueType::Graphics))
+                .chain(std::iter::once(
+                    queue_info.queue_family_index_for_type(QueueType::Compute),
+                ))
+                .chain(0_u32..queue_info.create_infos.len() as u32)
+                .find(|&queue_family_index| {
+                    surface
+                        .supports_queue_family(
+                            swapchain_loader.device().physical_device(),
+                            queue_family_index,
+                        )
+                        .unwrap_or(false)
+                })
+                .expect("Can't find a queue family supporting presentation on this surface");
         let result = Self {
             swapchain_loader,
             swapchain: None,
@@ -66,6 +85,7 @@ impl FrameManager {
             extent,
             format: vk::SurfaceFormatKHR::default(),
             needs_rebuild: true,
+            present_queue_family,
 
             options,
         };
@@ -255,5 +275,11 @@ pub struct AcquiredFrame {
 impl AcquiredFrame {
     pub fn swapchain(&self) -> &Arc<Swapchain> {
         &self.swapchain
+    }
+}
+
+impl HasImage for AcquiredFrame {
+    fn raw_image(&self) -> vk::Image {
+        self.image
     }
 }

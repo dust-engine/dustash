@@ -92,10 +92,16 @@ impl<'a> CommandRecorder<'a> {
         image: Arc<T>,
         image_layout: vk::ImageLayout,
         clear_color_value: &vk::ClearColorValue,
-        ranges: &[vk::ImageSubresourceRange]
+        ranges: &[vk::ImageSubresourceRange],
     ) -> &mut Self {
         unsafe {
-            self.device.cmd_clear_color_image(self.command_buffer, image.raw_image(), image_layout, clear_color_value, ranges)
+            self.device.cmd_clear_color_image(
+                self.command_buffer,
+                image.raw_image(),
+                image_layout,
+                clear_color_value,
+                ranges,
+            )
         }
         self.referenced_resources.push(image);
         self

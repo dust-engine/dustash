@@ -2,9 +2,9 @@ mod dispatcher;
 mod router;
 pub mod semaphore;
 pub mod timeline;
-pub use dispatcher::Submission;
 use crate::{command::recorder::CommandExecutable, fence::Fence, Device};
 use ash::{prelude::VkResult, vk};
+pub use dispatcher::Submission;
 pub use router::{QueueType, Queues, QueuesCreateInfo};
 use std::{
     future::{Future, IntoFuture},

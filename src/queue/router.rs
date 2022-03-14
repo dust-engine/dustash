@@ -1,10 +1,7 @@
-use std::{mem::MaybeUninit, sync::Arc};
-
-use ash::vk;
-
-use crate::{Device, PhysicalDevice};
-
 use super::{dispatcher::QueueDispatcher, Queue};
+use crate::{Device, PhysicalDevice};
+use ash::vk;
+use std::sync::Arc;
 
 #[derive(Clone, Copy)]
 pub enum QueueType {
@@ -61,14 +58,11 @@ impl Queues {
         Queues {
             queues: queue_dispatchers,
             queue_type_to_dispatcher: create_info.queue_type_to_family,
-
         }
     }
 
     pub fn flush_and_present(&self) {
         // special case for vkQueuePresentKHR
-        
-
     }
 }
 
@@ -166,11 +160,13 @@ impl QueuesCreateInfo {
             .unwrap()
             .0 as u32;
 
-        let mut queue_family_to_types: Vec<Option<QueueType>> = vec![None; available_queue_family.len()];
+        let mut queue_family_to_types: Vec<Option<QueueType>> =
+            vec![None; available_queue_family.len()];
         queue_family_to_types[graphics_queue_family as usize] = Some(QueueType::Graphics);
         queue_family_to_types[compute_queue_family as usize] = Some(QueueType::Compute);
         queue_family_to_types[transfer_queue_family as usize] = Some(QueueType::Transfer);
-        queue_family_to_types[sparse_binding_queue_family as usize] = Some(QueueType::SparseBinding);
+        queue_family_to_types[sparse_binding_queue_family as usize] =
+            Some(QueueType::SparseBinding);
 
         let queue_type_to_family: [u32; 4] = [
             graphics_queue_family,
@@ -179,23 +175,34 @@ impl QueuesCreateInfo {
             sparse_binding_queue_family,
         ];
 
-        let create_infos = queue_family_to_types.iter()
-        .enumerate()
-        .map(|(queue_family_index, queue_type)| 
-            vk::DeviceQueueCreateInfo {
-                flags: vk::DeviceQueueCreateFlags::empty(),
-                queue_family_index: queue_family_index as u32,
-                queue_count: 1,
-                p_queue_priorities: queue_type.map_or(&QUEUE_PRIORITY_LOW, |queue_type| queue_type.priority()),
-                ..Default::default()
-            }
-        )
-        .collect();
+        let create_infos = queue_family_to_types
+            .iter()
+            .enumerate()
+            .map(
+                |(queue_family_index, queue_type)| vk::DeviceQueueCreateInfo {
+                    flags: vk::DeviceQueueCreateFlags::empty(),
+                    queue_family_index: queue_family_index as u32,
+                    queue_count: 1,
+                    p_queue_priorities: queue_type
+                        .map_or(&QUEUE_PRIORITY_LOW, |queue_type| queue_type.priority()),
+                    ..Default::default()
+                },
+            )
+            .collect();
 
         QueuesCreateInfo {
             create_infos,
             queue_family_to_types,
             queue_type_to_family,
         }
+    }
+    pub fn queue_family_index_for_type(&self, ty: QueueType) -> u32 {
+        self.queue_type_to_family[ty as usize]
+    }
+    pub fn assigned_queue_type_for_family_index(
+        &self,
+        queue_family_index: u32,
+    ) -> Option<QueueType> {
+        self.queue_family_to_types[queue_family_index as usize]
     }
 }
