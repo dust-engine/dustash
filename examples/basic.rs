@@ -1,5 +1,7 @@
+use ash::extensions::khr;
 use ash::vk;
 use cstr::cstr;
+use raw_window_handle::HasRawWindowHandle;
 use std::sync::Arc;
 
 fn main() {
@@ -16,6 +18,10 @@ fn main() {
                     .api_version(vk::make_api_version(0, 1, 3, 0))
                     .build(),
             )
+            .enabled_extension_names(&[
+                khr::Surface::name().as_ptr(),
+                khr::Win32Surface::name().as_ptr(),
+            ])
             .build(),
     )
     .unwrap();
@@ -23,13 +29,14 @@ fn main() {
 
     let physical_devices = dustash::PhysicalDevice::enumerate(&instance).unwrap();
     let (device, queues) = physical_devices[0]
+        .clone()
         .create_device(&[], &[], &vk::PhysicalDeviceFeatures::default())
         .unwrap();
 
-    window_update(|| {});
+    window_update(instance, || {});
 }
 
-fn window_update(update_fn: impl Fn() -> () + 'static) {
+fn window_update(instance: Arc<dustash::Instance>, update_fn: impl Fn() -> () + 'static) {
     use winit::{
         event::{Event, WindowEvent},
         event_loop::{ControlFlow, EventLoop},
@@ -42,6 +49,9 @@ fn window_update(update_fn: impl Fn() -> () + 'static) {
         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
         .build(&event_loop)
         .unwrap();
+
+    let surface_loader = Arc::new(dustash::surface::SurfaceLoader::new(instance.clone()));
+    let surface = dustash::surface::Surface::create(surface_loader, &window).unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Wait;

@@ -9,6 +9,7 @@ use std::{ffi::CStr, ops::Deref, sync::Arc};
 
 pub mod command;
 pub mod fence;
+pub mod frames;
 pub mod queue;
 pub mod resources;
 pub mod surface;
@@ -53,6 +54,7 @@ impl Drop for Instance {
     }
 }
 
+#[derive(Clone)]
 pub struct PhysicalDevice {
     instance: Arc<Instance>,
     physical_device: vk::PhysicalDevice,
@@ -106,12 +108,12 @@ impl PhysicalDevice {
         }
     }
     pub fn create_device(
-        &self,
+        self,
         enabled_layers: &[&CStr],
         enabled_extensions: &[&CStr],
         enabled_features: &vk::PhysicalDeviceFeatures,
     ) -> VkResult<(Arc<Device>, crate::queue::Queues)> {
-        let queue_create_info = queue::QueuesCreateInfo::find(self);
+        let queue_create_info = queue::QueuesCreateInfo::find(&self);
         let queue_create_infos = queue_create_info.queue_create_infos();
         let create_info = vk::DeviceCreateInfo {
             queue_create_info_count: queue_create_infos.len() as u32,
@@ -134,7 +136,7 @@ impl PhysicalDevice {
                 .create_device(self.physical_device, &create_info, None)?
         };
         let device = Arc::new(Device {
-            instance: self.instance.clone(),
+            physical_device: self,
             device,
         });
 
@@ -147,8 +149,17 @@ impl PhysicalDevice {
 }
 
 pub struct Device {
-    instance: Arc<Instance>,
+    physical_device: PhysicalDevice,
     device: ash::Device,
+}
+
+impl Device {
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.physical_device.instance
+    }
+    pub fn physical_device(&self) -> &PhysicalDevice {
+        &self.physical_device
+    }
 }
 
 impl Deref for Device {

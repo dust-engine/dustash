@@ -15,6 +15,9 @@ impl SurfaceLoader {
         let loader = khr::Surface::new(instance.entry(), &instance);
         SurfaceLoader { instance, loader }
     }
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.instance
+    }
 }
 
 impl Deref for SurfaceLoader {
@@ -27,7 +30,13 @@ impl Deref for SurfaceLoader {
 
 pub struct Surface {
     loader: Arc<SurfaceLoader>,
-    surface: vk::SurfaceKHR,
+    pub(crate) surface: vk::SurfaceKHR,
+}
+
+impl Surface {
+    pub fn loader(&self) -> &Arc<SurfaceLoader> {
+        &self.loader
+    }
 }
 
 impl Surface {
@@ -66,16 +75,16 @@ impl Surface {
     ) -> VkResult<bool> {
         assert_eq!(pdevice.instance.handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
         unsafe {
-            self.loader
-                .get_physical_device_surface_support(pdevice.physical_device, queue_family_index, self.surface)
+            self.loader.get_physical_device_surface_support(
+                pdevice.physical_device,
+                queue_family_index,
+                self.surface,
+            )
         }
     }
 
     /// Query color formats supported by surface
-    pub fn get_formats(
-        &self,
-        pdevice: &PhysicalDevice,
-    ) -> VkResult<Vec<vk::SurfaceFormatKHR>> {
+    pub fn get_formats(&self, pdevice: &PhysicalDevice) -> VkResult<Vec<vk::SurfaceFormatKHR>> {
         assert_eq!(pdevice.instance.handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
         unsafe {
             self.loader
@@ -84,10 +93,7 @@ impl Surface {
     }
 
     /// Query color formats supported by surface
-    pub fn get_present_modes(
-        &self,
-        pdevice: &PhysicalDevice,
-    ) -> VkResult<Vec<vk::PresentModeKHR>> {
+    pub fn get_present_modes(&self, pdevice: &PhysicalDevice) -> VkResult<Vec<vk::PresentModeKHR>> {
         assert_eq!(pdevice.instance.handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
         unsafe {
             self.loader
