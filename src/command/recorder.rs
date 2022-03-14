@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::{prelude::VkResult, vk};
 
-use crate::resources;
+use crate::resources::{self, HasImage};
 
 use super::pool::CommandBuffer;
 
@@ -85,6 +85,19 @@ impl<'a> CommandRecorder<'a> {
         }
         self.referenced_resources.push(src_buffer);
         self.referenced_resources.push(dst_buffer);
+        self
+    }
+    pub fn clear_color_image<T: HasImage + Send + Sync + 'static>(
+        &mut self,
+        image: Arc<T>,
+        image_layout: vk::ImageLayout,
+        clear_color_value: &vk::ClearColorValue,
+        ranges: &[vk::ImageSubresourceRange]
+    ) -> &mut Self {
+        unsafe {
+            self.device.cmd_clear_color_image(self.command_buffer, image.raw_image(), image_layout, clear_color_value, ranges)
+        }
+        self.referenced_resources.push(image);
         self
     }
 }

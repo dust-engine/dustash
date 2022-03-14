@@ -12,16 +12,24 @@ pub struct CommandPool {
 impl CommandPool {
     pub fn new(
         device: Arc<Device>,
-        create_info: &vk::CommandPoolCreateInfo,
+        flags: vk::CommandPoolCreateFlags,
+        queue_family_index: u32,
     ) -> VkResult<CommandPool> {
         // Safety: No Host Syncronization rules for vkCreateCommandPool.
         unsafe {
-            let pool = device.create_command_pool(create_info, None)?;
+            let pool = device.create_command_pool(
+                &vk::CommandPoolCreateInfo {
+                    flags,
+                    queue_family_index,
+                    ..Default::default()
+                },
+                None,
+            )?;
             let pool = Mutex::new(pool);
             Ok(CommandPool {
                 device,
                 pool,
-                queue_family_index: create_info.queue_family_index,
+                queue_family_index,
             })
         }
     }
