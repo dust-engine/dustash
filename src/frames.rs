@@ -1,3 +1,5 @@
+use crate::fence::Fence;
+use crate::queue::semaphore::Semaphore;
 use crate::queue::{QueueType, QueuesCreateInfo};
 use crate::Device;
 use crate::{resources::HasImage, swapchain::Swapchain};
@@ -55,16 +57,13 @@ impl FrameManager {
         let frames = (0..options.frames_in_flight)
             .map(|_| unsafe {
                 Ok(Frame {
-                    complete_fence: swapchain_loader.device().create_fence(
-                        &vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED),
-                        None,
-                    )?,
-                    acquire_semaphore: swapchain_loader
-                        .device()
-                        .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?,
-                    complete_semaphore: swapchain_loader
-                        .device()
-                        .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?,
+                    complete_fence: Arc::new(Fence::new(swapchain_loader.device().clone(), true)?),
+                    acquire_semaphore: Arc::new(
+                        Semaphore::new(swapchain_loader.device().clone()).unwrap(),
+                    ),
+                    complete_semaphore: Arc::new(
+                        Semaphore::new(swapchain_loader.device().clone()).unwrap(),
+                    ),
                     generation: 0,
                 })
             })
@@ -115,12 +114,12 @@ impl FrameManager {
         let next_frame_index = (self.frame_index + 1) % self.frames.len();
         unsafe {
             self.device().wait_for_fences(
-                &[self.current_frame().complete_fence],
+                &[self.current_frame().complete_fence.fence],
                 true,
                 timeout_ns,
             )?;
             self.device()
-                .reset_fences(&[self.current_frame().complete_fence])?;
+                .reset_fences(&[self.current_frame().complete_fence.fence])?;
             // self.current_frame() has finished rendering
             while let Some(&(swapchain, generation)) = self.old_swapchains.front() {
                 if self.frames[next_frame_index].generation == generation {
@@ -139,7 +138,7 @@ impl FrameManager {
                     // - Host access to fence must be externally syncronized. Fence is VK_NULL.
                     match self.swapchain.as_ref().unwrap().acquire_next_image(
                         timeout_ns,
-                        self.current_frame().acquire_semaphore,
+                        self.current_frame().acquire_semaphore.semaphore,
                         vk::Fence::null(),
                     ) {
                         Ok((index, suboptimal)) => {
@@ -151,9 +150,9 @@ impl FrameManager {
                             let acquired_frame = AcquiredFrame {
                                 image_index: index,
                                 frame_index: self.frame_index,
-                                ready_semaphore: self.current_frame().acquire_semaphore,
-                                complete_semaphore: self.current_frame().complete_semaphore,
-                                complete_fence: self.current_frame().complete_fence,
+                                ready_semaphore: self.current_frame().acquire_semaphore.clone(),
+                                complete_semaphore: self.current_frame().complete_semaphore.clone(),
+                                complete_fence: self.current_frame().complete_fence.clone(),
                                 image: self.images[index as usize],
                                 present_queue_family: self.present_queue_family,
                             };
@@ -316,9 +315,9 @@ impl Default for Options {
 }
 
 struct Frame {
-    complete_fence: vk::Fence,
-    acquire_semaphore: vk::Semaphore,
-    complete_semaphore: vk::Semaphore,
+    complete_fence: Arc<Fence>,
+    acquire_semaphore: Arc<Semaphore>,
+    complete_semaphore: Arc<Semaphore>,
     generation: u64,
 }
 
@@ -333,14 +332,14 @@ pub struct AcquiredFrame {
     /// accessed immediately after [`Swapchain::acquire`] returns
     pub frame_index: usize,
     /// Must be waited on before accessing the image associated with `image_index`
-    pub ready_semaphore: vk::Semaphore,
+    pub ready_semaphore: Arc<Semaphore>,
 
     /// Must be signaled when access is complete
-    pub complete_semaphore: vk::Semaphore,
+    pub complete_semaphore: Arc<Semaphore>,
 
     /// Must be signaled when access to the image associated with `image_index` and any per-frame
     /// resources associated with `frame_index` is complete
-    pub complete_fence: vk::Fence,
+    pub complete_fence: Arc<Fence>,
 
     pub image: vk::Image, // Always valid, since we retain a reference to the swapchain
 }

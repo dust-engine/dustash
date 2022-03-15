@@ -1,7 +1,8 @@
-use ash::extensions::khr;
 use ash::vk;
+use ash::{extensions::khr, vk::CommandPoolCreateFlags};
 use cstr::cstr;
-use dustash::frames::FrameManager;
+use dustash::queue::QueueType;
+use dustash::{command::pool::CommandPool, frames::FrameManager};
 
 use std::sync::Arc;
 
@@ -34,7 +35,7 @@ fn main() {
     let instance = Arc::new(instance);
 
     let physical_devices = dustash::PhysicalDevice::enumerate(&instance).unwrap();
-    let (device, _queues) = physical_devices[0]
+    let (device, mut queues) = physical_devices[0]
         .clone()
         .create_device(
             &[],
@@ -65,9 +66,56 @@ fn main() {
         },
     )
     .unwrap();
+
+    let command_pool = CommandPool::new(
+        device.clone(),
+        vk::CommandPoolCreateFlags::empty(),
+        queues.of_type(QueueType::Compute).family_index(),
+    )
+    .unwrap();
+    let command_pool = Arc::new(command_pool);
     window_update(window, event_loop, move || {
-        let _frame = frames.acquire(!0).unwrap();
-        println!("HELLO");
+        let acquired_image = frames.acquire(!0).unwrap();
+        let buffer = command_pool.clone().allocate_one().unwrap();
+        println!("update1");
+        let exec = buffer
+            .record(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT, |cr| {
+                let clear_color_value = vk::ClearColorValue {
+                    float32: [0.0, 1.0, 0.0, 1.0],
+                };
+                cr.clear_color_image(
+                    acquired_image.image,
+                    vk::ImageLayout::GENERAL,
+                    &clear_color_value,
+                    &[vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                        base_mip_level: 0,
+                        level_count: 1,
+                    }],
+                );
+            })
+            .unwrap();
+
+        println!("update2");
+        queues
+            .of_type(QueueType::Compute)
+            .submit(
+                vec![dustash::queue::SemaphoreOp::binary(
+                    acquired_image.ready_semaphore.clone(),
+                    vk::PipelineStageFlags2::CLEAR,
+                )],
+                vec![exec],
+                vec![dustash::queue::SemaphoreOp::binary(
+                    acquired_image.complete_semaphore.clone(),
+                    vk::PipelineStageFlags2::CLEAR,
+                )],
+            )
+            .fence(acquired_image.complete_fence.clone());
+        queues
+            .flush_and_present(&mut frames, acquired_image)
+            .unwrap();
     });
 }
 

@@ -18,6 +18,12 @@ pub trait HasImage {
     fn raw_image(&self) -> vk::Image;
 }
 
+impl HasImage for vk::Image {
+    fn raw_image(&self) -> vk::Image {
+        *self
+    }
+}
+
 pub struct Image {
     device: Arc<ash::Device>,
     pub(crate) image: vk::Image,

@@ -84,7 +84,7 @@ impl Queues {
             // - Host access to pPresentInfo->pSwapchains[] must be externally synchronized. We have &mut frames, and thus ownership on frames.swapchain.
             frames.swapchain.as_mut().unwrap().queue_present(
                 present_queue,
-                &[frame.complete_semaphore],
+                &[frame.complete_semaphore.semaphore],
                 frame.image_index,
             )?;
         }

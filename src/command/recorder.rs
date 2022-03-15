@@ -11,7 +11,7 @@ use super::pool::CommandBuffer;
 // Submitting a CommandExecutable in Initial state due to pool reset is a no-op.
 pub struct CommandExecutable {
     pub(crate) command_buffer: CommandBuffer,
-    pub(crate) _resource_guards: Vec<Arc<dyn Send + Sync>>,
+    pub(crate) _resource_guards: Vec<Box<dyn Send>>,
 }
 
 // vk::CommandBuffer in Recording state.
@@ -20,7 +20,7 @@ pub struct CommandExecutable {
 pub struct CommandRecorder<'a> {
     device: &'a ash::Device,
     command_buffer: vk::CommandBuffer,
-    referenced_resources: Vec<Arc<dyn Send + Sync>>,
+    referenced_resources: Vec<Box<dyn Send>>,
 }
 
 impl CommandBuffer {
@@ -83,13 +83,14 @@ impl<'a> CommandRecorder<'a> {
                 regions,
             );
         }
-        self.referenced_resources.push(src_buffer);
-        self.referenced_resources.push(dst_buffer);
+        self.referenced_resources.push(Box::new(src_buffer));
+        self.referenced_resources.push(Box::new(dst_buffer)); // TODO
         self
     }
-    pub fn clear_color_image<T: HasImage + Send + Sync + 'static>(
+
+    pub fn clear_color_image<T: HasImage + Send + 'static>(
         &mut self,
-        image: Arc<T>,
+        image: T,
         image_layout: vk::ImageLayout,
         clear_color_value: &vk::ClearColorValue,
         ranges: &[vk::ImageSubresourceRange],
@@ -103,7 +104,10 @@ impl<'a> CommandRecorder<'a> {
                 ranges,
             )
         }
-        self.referenced_resources.push(image);
+
+        if std::mem::needs_drop::<T>() {
+            self.referenced_resources.push(Box::new(image));
+        }
         self
     }
 }

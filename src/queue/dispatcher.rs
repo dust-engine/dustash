@@ -32,19 +32,24 @@ impl QueueDispatcher {
     pub fn family_index(&self) -> u32 {
         self.queue.family_index
     }
-    /// Returns a future that resolves after flush() when all submissions in the batch completes.
     pub fn submit(
         &self,
         wait_semaphores: Vec<SemaphoreOp>,
         executables: Vec<CommandExecutable>,
         signal_semaphore: Vec<SemaphoreOp>,
-    ) {
+    ) -> &Self {
         self.command_count.fetch_add(1, Ordering::Relaxed);
         self.commands.push(QueueCommand::Submit(Submission {
             wait_semaphores,
             executables,
             signal_semaphore,
         }));
+        self
+    }
+    pub fn fence(&self, fence: Arc<Fence>) -> &Self {
+        self.command_count.fetch_add(1, Ordering::Relaxed);
+        self.commands.push(QueueCommand::Fence(fence));
+        self
     }
     pub fn is_empty(&self) -> bool {
         self.command_count.load(Ordering::Relaxed) == 0
@@ -194,10 +199,35 @@ impl QueueSubmissionFence {
     }
 }
 
+/// stage_mask in wait semaphores: Block the execution of these stages until the semaphore was signaled.
+/// Stages not specified in wait_stages can proceed before the semaphore signal operation.
+///
+/// stage_mask in signal semaphores: Block the semaphore signal operation on the completion of these stages.
+/// The semaphore will be signaled even if other stages are still running.
 pub struct SemaphoreOp {
     pub semaphore: Arc<Semaphore>,
     pub stage_mask: vk::PipelineStageFlags2,
     pub value: u64,
+}
+impl SemaphoreOp {
+    pub fn binary(semaphore: Arc<Semaphore>, stage_mask: vk::PipelineStageFlags2) -> Self {
+        SemaphoreOp {
+            semaphore,
+            stage_mask,
+            value: 0,
+        }
+    }
+    pub fn timeline(
+        semaphore: Arc<Semaphore>,
+        stage_mask: vk::PipelineStageFlags2,
+        value: u64,
+    ) -> Self {
+        SemaphoreOp {
+            semaphore,
+            stage_mask,
+            value,
+        }
+    }
 }
 
 struct Submission {

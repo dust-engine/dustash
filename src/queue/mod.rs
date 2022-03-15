@@ -1,4 +1,5 @@
 mod dispatcher;
+pub use dispatcher::SemaphoreOp;
 mod router;
 pub mod semaphore;
 pub mod timeline;
