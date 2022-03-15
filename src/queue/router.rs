@@ -1,6 +1,6 @@
 use super::{dispatcher::QueueDispatcher, Queue};
-use crate::{Device, PhysicalDevice};
-use ash::vk;
+use crate::{frames::AcquiredFrame, Device, PhysicalDevice};
+use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
@@ -61,8 +61,34 @@ impl Queues {
         }
     }
 
-    pub fn flush_and_present(&self) {
-        // special case for vkQueuePresentKHR
+    pub fn flush_and_present(
+        &mut self,
+        frames: &mut crate::frames::FrameManager,
+        frame: AcquiredFrame,
+    ) -> VkResult<()> {
+        // We take ownership of AcquiredFrame here, ensuring that Swapchain Acquire occured before submitting command buffers.
+        // Note that acquire and present calls should be interleaved. Always present your existing AcquiredFrame before acquiring the next one.
+
+        for dispatcher in self.queues.iter_mut() {
+            dispatcher.flush()?;
+        }
+
+        // We perform queue present after all dispatchers are flushed to ensure that queue present happens last.
+        let present_queue = self.queues[frame.present_queue_family as usize].queue.queue;
+        unsafe {
+            // frames.swapchain.is_some() is guaranteed to be true. frames.swapchain is only None on initialization, in which case we wouldn't have AcquiredFrame
+            // Safety:
+            // - Host access to queue must be externally synchronized. We have &mut self and thus ownership on present_queue.
+            // - Host access to pPresentInfo->pWaitSemaphores[] must be externally synchronized. We have &mut frames, and frame.complete_semaphore
+            // was borrowed from &mut frames. Therefore, we do have exclusive ownership on frame.complete_semaphore.
+            // - Host access to pPresentInfo->pSwapchains[] must be externally synchronized. We have &mut frames, and thus ownership on frames.swapchain.
+            frames.swapchain.as_mut().unwrap().queue_present(
+                present_queue,
+                &[frame.complete_semaphore],
+                frame.image_index,
+            )?;
+        }
+        Ok(())
     }
 }
 

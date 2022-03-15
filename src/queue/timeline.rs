@@ -4,7 +4,7 @@ use futures_util::{future::join_all, FutureExt};
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use super::{
-    dispatcher::{QueueDispatcher, SemaphoreOp, Submission},
+    dispatcher::{QueueDispatcher, SemaphoreOp},
     semaphore::{TimelineSemaphore, TimelineSemaphoreOp},
 };
 use crate::{command::recorder::CommandExecutable, Device};
@@ -41,8 +41,8 @@ impl Timeline {
         wait_stages: vk::PipelineStageFlags2,
         signal_stages: vk::PipelineStageFlags2,
     ) -> &mut Self {
-        queue.submit(Submission {
-            wait_semaphores: if self.index == 0 && self.parent_semaphore.is_none() {
+        queue.submit(
+            if self.index == 0 && self.parent_semaphore.is_none() {
                 // This is a brand new timeline. In the other branch, s would've been self.semaphore and
                 // i would've been self.index which is 0. This is a no-op.
                 Vec::new()
@@ -56,12 +56,12 @@ impl Timeline {
                 }]
             },
             executables,
-            signal_semaphore: vec![SemaphoreOp {
+            vec![SemaphoreOp {
                 semaphore: self.semaphore.clone().downgrade_arc(),
                 stage_mask: signal_stages,
                 value: self.index + 1,
             }],
-        });
+        );
         self.index += 1;
         self.parent_semaphore = None;
         self
@@ -198,15 +198,15 @@ impl<'a> TimelineJoin<'a> {
             .map(|results| results.into_iter().find(|r| r.is_err()).unwrap_or(Ok(())));
         self.timeline.finish_task = Some(Box::pin(joined_fut));
 
-        queue.submit(Submission {
+        queue.submit(
             wait_semaphores,
             executables,
-            signal_semaphore: vec![SemaphoreOp {
+            vec![SemaphoreOp {
                 semaphore: self.timeline.semaphore.clone().downgrade_arc(),
                 stage_mask: signal_stages,
                 value: self.timeline.index + 1,
             }],
-        });
+        );
         self.timeline.index += 1;
         self.timeline.parent_semaphore = None;
 

@@ -1,6 +1,7 @@
 use ash::extensions::khr;
 use ash::prelude::VkResult;
 use ash::vk;
+use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -33,7 +34,7 @@ impl SwapchainLoader {
 }
 
 pub struct Swapchain {
-    loader: Arc<SwapchainLoader>,
+    pub(crate) loader: Arc<SwapchainLoader>,
     pub(crate) swapchain: vk::SwapchainKHR,
 }
 
@@ -60,6 +61,30 @@ impl Swapchain {
         // Requires exclusive access to swapchain
         self.loader
             .acquire_next_image(self.swapchain, timeout_ns, semaphore, fence)
+    }
+
+    // Returns: Suboptimal
+    pub unsafe fn queue_present(
+        &mut self,
+        queue: vk::Queue,
+        wait_semaphores: &[vk::Semaphore],
+        image_indice: u32,
+    ) -> VkResult<bool> {
+        let mut result: MaybeUninit<vk::Result> = MaybeUninit::uninit();
+        let suboptimal = self.loader.queue_present(
+            queue,
+            &vk::PresentInfoKHR {
+                wait_semaphore_count: wait_semaphores.len() as u32,
+                p_wait_semaphores: wait_semaphores.as_ptr(),
+                swapchain_count: 1,
+                p_swapchains: &self.swapchain,
+                p_image_indices: &image_indice,
+                p_results: result.as_mut_ptr(),
+                ..Default::default()
+            },
+        )?;
+        let result = result.assume_init();
+        result.result_with_success(suboptimal)
     }
 
     pub fn get_swapchain_images(&self) -> VkResult<Vec<vk::Image>> {

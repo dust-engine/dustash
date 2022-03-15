@@ -16,8 +16,8 @@ use super::{semaphore::Semaphore, Queue, QueueType};
 pub struct QueueDispatcher {
     pub(crate) queue: Queue,
     assigned_queue_type: Option<QueueType>,
-    submissions: crossbeam::queue::SegQueue<Submission>,
-    submission_count: AtomicUsize,
+    commands: crossbeam::queue::SegQueue<QueueCommand>,
+    command_count: AtomicUsize,
 }
 
 impl QueueDispatcher {
@@ -25,48 +25,104 @@ impl QueueDispatcher {
         QueueDispatcher {
             queue,
             assigned_queue_type: assigned_type,
-            submissions: crossbeam::queue::SegQueue::new(),
-            submission_count: AtomicUsize::new(0),
+            commands: crossbeam::queue::SegQueue::new(),
+            command_count: AtomicUsize::new(0),
         }
     }
     pub fn family_index(&self) -> u32 {
         self.queue.family_index
     }
     /// Returns a future that resolves after flush() when all submissions in the batch completes.
-    pub fn submit(&self, submission: Submission) {
-        self.submission_count.fetch_add(1, Ordering::Relaxed);
-        self.submissions.push(submission);
+    pub fn submit(
+        &self,
+        wait_semaphores: Vec<SemaphoreOp>,
+        executables: Vec<CommandExecutable>,
+        signal_semaphore: Vec<SemaphoreOp>,
+    ) {
+        self.command_count.fetch_add(1, Ordering::Relaxed);
+        self.commands.push(QueueCommand::Submit(Submission {
+            wait_semaphores,
+            executables,
+            signal_semaphore,
+        }));
+    }
+    pub fn is_empty(&self) -> bool {
+        self.command_count.load(Ordering::Relaxed) == 0
     }
 
     // TODO: bind_sparse
 
-    pub fn flush(&mut self) -> VkResult<Option<QueueSubmissionFence>> {
-        let num_submissions = *self.submission_count.get_mut();
+    // The returned QueueSubmissionFence needs to be waited on and dropped
+    pub fn flush(&mut self) -> VkResult<()> {
+        let num_submissions = *self.command_count.get_mut();
         if num_submissions == 0 {
-            return Ok(None);
+            return Ok(());
         }
-        *self.submission_count.get_mut() = 0;
-        let mut submissions: Vec<Submission> = Vec::with_capacity(num_submissions);
+        *self.command_count.get_mut() = 0;
+        let mut submissions: Vec<Submission> = Vec::new();
         let mut wait_semaphore_count: usize = 0;
         let mut signal_semaphore_count: usize = 0;
         let mut executables_count: usize = 0;
         {
-            while let Some(op) = self.submissions.pop() {
-                wait_semaphore_count += op.wait_semaphores.len();
-                signal_semaphore_count += op.signal_semaphore.len();
-                executables_count += op.executables.len();
-                submissions.push(op);
+            while let Some(op) = self.commands.pop() {
+                match op {
+                    QueueCommand::Submit(op) => {
+                        wait_semaphore_count += op.wait_semaphores.len();
+                        signal_semaphore_count += op.signal_semaphore.len();
+                        executables_count += op.executables.len();
+                        submissions.push(op);
+                    }
+                    QueueCommand::Fence(fence) => {
+                        // Submit existing fences
+                        let fenced_submissions = std::mem::replace(&mut submissions, Vec::new());
+                        unsafe {
+                            self.queue_submit(
+                                fenced_submissions,
+                                fence,
+                                wait_semaphore_count,
+                                signal_semaphore_count,
+                                executables_count,
+                            )?;
+                        }
+                        wait_semaphore_count = 0;
+                        signal_semaphore_count = 0;
+                        executables_count = 0;
+                    }
+                }
             }
-            assert_eq!(submissions.len(), num_submissions);
         }
+        // If there are still some unfenced submissions
+        if submissions.len() > 0 {
+            let fence = Fence::new(self.queue.device.clone(), false)?;
+            let fence = Arc::new(fence);
+            unsafe {
+                self.queue_submit(
+                    submissions,
+                    fence,
+                    wait_semaphore_count,
+                    signal_semaphore_count,
+                    executables_count,
+                )?;
+            }
+        }
+        Ok(())
+    }
 
+    unsafe fn queue_submit(
+        &mut self,
+        submissions: Vec<Submission>,
+        fence: Arc<Fence>,
+        wait_semaphore_count: usize,
+        signal_semaphore_count: usize,
+        executables_count: usize,
+    ) -> VkResult<()> {
         let mut wait_semaphores: Vec<vk::SemaphoreSubmitInfo> =
             Vec::with_capacity(wait_semaphore_count);
         let mut signal_semaphores: Vec<vk::SemaphoreSubmitInfo> =
             Vec::with_capacity(signal_semaphore_count);
         let mut command_buffers: Vec<vk::CommandBufferSubmitInfo> =
             Vec::with_capacity(executables_count);
-        let mut submit_infos: Vec<vk::SubmitInfo2> = Vec::with_capacity(num_submissions);
+        let mut submit_infos: Vec<vk::SubmitInfo2> = Vec::with_capacity(submissions.len());
 
         for submission in submissions.iter() {
             unsafe {
@@ -106,20 +162,20 @@ impl QueueDispatcher {
             }
         }
 
-        let fence = Fence::new(self.queue.device.clone(), false)?;
-        unsafe {
-            self.queue
-                .submit_raw2(submit_infos.as_slice(), fence.fence)?;
-        }
-        Ok(Some(QueueSubmissionFence {
+        self.queue
+            .submit_raw2(submit_infos.as_slice(), fence.fence)?;
+
+        let submission = QueueSubmissionFence {
             fence,
             _submissions: submissions,
-        }))
+        };
+        submission.wait_detached();
+        Ok(())
     }
 }
 
 pub struct QueueSubmissionFence {
-    fence: Fence,
+    fence: Arc<Fence>,
     _submissions: Vec<Submission>,
 }
 
@@ -129,6 +185,13 @@ impl QueueSubmissionFence {
         drop(self);
         Ok(())
     }
+
+    pub fn wait_detached(self) {
+        let task = blocking::unblock(|| {
+            self.wait().unwrap();
+        });
+        task.detach();
+    }
 }
 
 pub struct SemaphoreOp {
@@ -136,8 +199,14 @@ pub struct SemaphoreOp {
     pub stage_mask: vk::PipelineStageFlags2,
     pub value: u64,
 }
-pub struct Submission {
-    pub wait_semaphores: Vec<SemaphoreOp>,
-    pub executables: Vec<CommandExecutable>,
-    pub signal_semaphore: Vec<SemaphoreOp>,
+
+struct Submission {
+    wait_semaphores: Vec<SemaphoreOp>,
+    executables: Vec<CommandExecutable>,
+    signal_semaphore: Vec<SemaphoreOp>,
+}
+enum QueueCommand {
+    Submit(Submission),
+    Fence(Arc<Fence>),
+    // TODO: sparse bind
 }

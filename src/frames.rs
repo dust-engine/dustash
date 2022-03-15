@@ -2,6 +2,8 @@ use crate::queue::{QueueType, QueuesCreateInfo};
 use crate::Device;
 use crate::{resources::HasImage, swapchain::Swapchain};
 use ash::{prelude::VkResult, vk};
+use std::collections::VecDeque;
+use std::mem::MaybeUninit;
 use std::sync::Arc;
 
 use crate::{surface::Surface, swapchain::SwapchainLoader};
@@ -9,7 +11,7 @@ use crate::{surface::Surface, swapchain::SwapchainLoader};
 /// Manages synchronizing and rebuilding a Vulkan swapchain
 pub struct FrameManager {
     swapchain_loader: Arc<SwapchainLoader>,
-    swapchain: Option<Arc<Swapchain>>,
+    pub(crate) swapchain: Option<Swapchain>,
     surface: Arc<Surface>,
     present_queue_family: u32,
 
@@ -22,6 +24,9 @@ pub struct FrameManager {
     extent: vk::Extent2D,
     format: vk::SurfaceFormatKHR,
     needs_rebuild: bool,
+
+    generation: u64,
+    old_swapchains: VecDeque<(vk::SwapchainKHR, u64)>,
 }
 
 impl FrameManager {
@@ -31,6 +36,9 @@ impl FrameManager {
 
     fn current_frame(&self) -> &Frame {
         &self.frames[self.frame_index]
+    }
+    fn current_frame_mut(&mut self) -> &mut Frame {
+        &mut self.frames[self.frame_index]
     }
     /// Construct a new [`Swapchain`] for rendering at most `frames_in_flight` frames
     /// concurrently. `extent` should be the current dimensions of `surface`.
@@ -47,13 +55,17 @@ impl FrameManager {
         let frames = (0..options.frames_in_flight)
             .map(|_| unsafe {
                 Ok(Frame {
-                    complete: swapchain_loader.device().create_fence(
+                    complete_fence: swapchain_loader.device().create_fence(
                         &vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED),
                         None,
                     )?,
-                    acquire: swapchain_loader
+                    acquire_semaphore: swapchain_loader
                         .device()
                         .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?,
+                    complete_semaphore: swapchain_loader
+                        .device()
+                        .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?,
+                    generation: 0,
                 })
             })
             .collect::<VkResult<Vec<Frame>>>()?;
@@ -88,36 +100,64 @@ impl FrameManager {
             present_queue_family,
 
             options,
+            generation: 0,
+            old_swapchains: VecDeque::new(), // TODO: max capacity?
         };
         Ok(result)
     }
 
+    pub fn update(&mut self, extent: vk::Extent2D) {
+        self.extent = extent;
+        self.needs_rebuild = true;
+    }
+
     pub fn acquire(&mut self, timeout_ns: u64) -> VkResult<AcquiredFrame> {
+        let next_frame_index = (self.frame_index + 1) % self.frames.len();
         unsafe {
+            self.device().wait_for_fences(
+                &[self.current_frame().complete_fence],
+                true,
+                timeout_ns,
+            )?;
             self.device()
-                .wait_for_fences(&[self.current_frame().complete], true, timeout_ns)?;
-            self.device()
-                .reset_fences(&[self.current_frame().complete])?;
-            // TODO: drop reference to old swapchain
+                .reset_fences(&[self.current_frame().complete_fence])?;
+            // self.current_frame() has finished rendering
+            while let Some(&(swapchain, generation)) = self.old_swapchains.front() {
+                if self.frames[next_frame_index].generation == generation {
+                    // next frame is still being rendered, and it's using the same swapchain as this one.
+                    break;
+                }
+                self.swapchain_loader.destroy_swapchain(swapchain, None);
+                self.old_swapchains.pop_front();
+            }
             loop {
                 if !self.needs_rebuild {
                     // self.swapchain is now guaranteed to be Some, since self.needs_rebuild was set to be true at initialization.
+                    // Safety:
+                    // - Host access to swapchain must be externally synchronized. We have &mut and thus ownership over self.swapchain.
+                    // - Host access to semaphore must be externally synchronized. We have &mut and thus ownership over self.current_frame().acquire_semaphore.
+                    // - Host access to fence must be externally syncronized. Fence is VK_NULL.
                     match self.swapchain.as_ref().unwrap().acquire_next_image(
                         timeout_ns,
-                        self.current_frame().acquire,
+                        self.current_frame().acquire_semaphore,
                         vk::Fence::null(),
                     ) {
                         Ok((index, suboptimal)) => {
                             self.needs_rebuild = suboptimal;
+                            let _invalidate_images =
+                                self.current_frame().generation != self.generation; // TODO: ?
+                            self.current_frame_mut().generation = self.generation;
+
                             let acquired_frame = AcquiredFrame {
-                                image_index: index as usize,
+                                image_index: index,
                                 frame_index: self.frame_index,
-                                ready: self.current_frame().acquire,
-                                complete: self.current_frame().complete,
-                                swapchain: self.swapchain.as_ref().unwrap().clone(),
+                                ready_semaphore: self.current_frame().acquire_semaphore,
+                                complete_semaphore: self.current_frame().complete_semaphore,
+                                complete_fence: self.current_frame().complete_fence,
                                 image: self.images[index as usize],
+                                present_queue_family: self.present_queue_family,
                             };
-                            self.frame_index = (self.frame_index + 1) % self.frames.len();
+                            self.frame_index = next_frame_index;
                             return Ok(acquired_frame);
                         }
                         // If outdated, acquire again
@@ -190,6 +230,24 @@ impl FrameManager {
             .ok_or(vk::Result::ERROR_OUT_OF_DATE_KHR)?;
 
         let old_swapchain = self.swapchain.take();
+        // take apart old_swapchain by force
+        let (swapchain_loader, old_swapchain) = if let Some(old_swapchain) = old_swapchain {
+            let swapchain = old_swapchain.swapchain;
+            let mut old_swapchain = MaybeUninit::new(old_swapchain);
+            let loader = {
+                let mut loader: MaybeUninit<Arc<SwapchainLoader>> = MaybeUninit::uninit();
+                std::mem::swap(
+                    loader.assume_init_mut(),
+                    &mut old_swapchain.assume_init_mut().loader,
+                );
+                // now old_swapchain is garbage
+                drop(old_swapchain);
+                loader.assume_init()
+            };
+            (loader, swapchain)
+        } else {
+            (self.swapchain_loader.clone(), vk::SwapchainKHR::null())
+        };
 
         let info = vk::SwapchainCreateInfoKHR {
             surface: self.surface.surface,
@@ -204,13 +262,22 @@ impl FrameManager {
             present_mode,
             clipped: vk::TRUE,
             image_array_layers: 1,
-            old_swapchain: old_swapchain.map_or(vk::SwapchainKHR::null(), |s| s.swapchain),
+            old_swapchain,
             ..Default::default()
         };
-        let new_swapchain = Swapchain::create(self.swapchain_loader.clone(), &info)?;
+
+        let new_swapchain = Swapchain::create(swapchain_loader, &info)?;
+
+        // Can't destroy old swapchain yet.
+        if old_swapchain != vk::SwapchainKHR::null() {
+            self.old_swapchains
+                .push_back((old_swapchain, self.generation))
+        }
+        self.generation = self.generation.wrapping_add(1);
         self.images = new_swapchain.get_swapchain_images()?;
-        self.swapchain = Some(Arc::new(new_swapchain));
+        self.swapchain = Some(new_swapchain);
         self.needs_rebuild = false;
+
         Ok(())
     }
 }
@@ -249,33 +316,33 @@ impl Default for Options {
 }
 
 struct Frame {
-    complete: vk::Fence,
-    acquire: vk::Semaphore,
+    complete_fence: vk::Fence,
+    acquire_semaphore: vk::Semaphore,
+    complete_semaphore: vk::Semaphore,
+    generation: u64,
 }
 
 #[derive(Clone)]
 pub struct AcquiredFrame {
-    /// A reference to the swapchain from which the frame was acquired.
-    swapchain: Arc<Swapchain>,
+    /// Queue family to present on
+    pub present_queue_family: u32,
 
     /// Index of the image to write to in [`Swapchain::images`]
-    pub image_index: usize,
+    pub image_index: u32,
     /// Index of the frame in flight, for use tracking your own per-frame resources, which may be
     /// accessed immediately after [`Swapchain::acquire`] returns
     pub frame_index: usize,
     /// Must be waited on before accessing the image associated with `image_index`
-    pub ready: vk::Semaphore,
+    pub ready_semaphore: vk::Semaphore,
+
+    /// Must be signaled when access is complete
+    pub complete_semaphore: vk::Semaphore,
+
     /// Must be signaled when access to the image associated with `image_index` and any per-frame
     /// resources associated with `frame_index` is complete
-    pub complete: vk::Fence,
+    pub complete_fence: vk::Fence,
 
     pub image: vk::Image, // Always valid, since we retain a reference to the swapchain
-}
-
-impl AcquiredFrame {
-    pub fn swapchain(&self) -> &Arc<Swapchain> {
-        &self.swapchain
-    }
 }
 
 impl HasImage for AcquiredFrame {
