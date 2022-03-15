@@ -1,3 +1,8 @@
 # Dustash
 
-A thin wrapper around ash. It solves just one problem with reference counting right now: when to drop resources.
+A thin wrapper around ash. WIP
+
+- Resource management with reference counting
+- Swapchain and frame-in-flight utilities
+- Batched queue dispatch
+- Timeline semaphore utility
