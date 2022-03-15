@@ -110,4 +110,12 @@ impl<'a> CommandRecorder<'a> {
         }
         self
     }
+
+    pub fn pipeline_barrier(&mut self, dependency_info: &vk::DependencyInfo) -> &mut Self {
+        unsafe {
+            self.device
+                .cmd_pipeline_barrier2(self.command_buffer, dependency_info)
+        }
+        self
+    }
 }

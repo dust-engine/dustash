@@ -1,5 +1,5 @@
+use ash::extensions::khr;
 use ash::vk;
-use ash::{extensions::khr, vk::CommandPoolCreateFlags};
 use cstr::cstr;
 use dustash::queue::QueueType;
 use dustash::{command::pool::CommandPool, frames::FrameManager};
@@ -14,6 +14,14 @@ use winit::{
 fn main() {
     let entry = unsafe { ash::Entry::load().unwrap() };
     let entry = Arc::new(entry);
+    let version = entry.try_enumerate_instance_version().unwrap().unwrap();
+    println!(
+        "Supported version: {}.{}.{}({})",
+        vk::api_version_major(version),
+        vk::api_version_minor(version),
+        vk::api_version_patch(version),
+        vk::api_version_variant(version)
+    );
 
     let instance = dustash::Instance::create(
         entry,
@@ -22,7 +30,7 @@ fn main() {
                 &vk::ApplicationInfo::builder()
                     .application_name(cstr!("Dustash Example"))
                     .application_version(vk::make_api_version(0, 0, 1, 0))
-                    .api_version(vk::make_api_version(0, 1, 3, 0))
+                    .api_version(version)
                     .build(),
             )
             .enabled_extension_names(&[
@@ -40,7 +48,12 @@ fn main() {
         .create_device(
             &[],
             &[khr::Swapchain::name()],
-            &vk::PhysicalDeviceFeatures::default(),
+            &vk::PhysicalDeviceFeatures2::builder().push_next(
+                &mut vk::PhysicalDeviceSynchronization2Features {
+                    synchronization2: vk::TRUE,
+                    ..Default::default()
+                },
+            ),
         )
         .unwrap();
 
@@ -59,7 +72,10 @@ fn main() {
     let mut frames = FrameManager::new(
         swapchain_loader,
         surface,
-        dustash::frames::Options::default(),
+        dustash::frames::Options {
+            usage: vk::ImageUsageFlags::TRANSFER_DST,
+            ..Default::default()
+        },
         vk::Extent2D {
             width: 1280,
             height: 720,
@@ -77,13 +93,34 @@ fn main() {
     window_update(window, event_loop, move || {
         let acquired_image = frames.acquire(!0).unwrap();
         let buffer = command_pool.clone().allocate_one().unwrap();
-        println!("update1");
         let exec = buffer
             .record(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT, |cr| {
                 let clear_color_value = vk::ClearColorValue {
                     float32: [0.0, 1.0, 0.0, 1.0],
                 };
-                cr.clear_color_image(
+                cr.pipeline_barrier(
+                    &vk::DependencyInfo::builder()
+                        .dependency_flags(vk::DependencyFlags::BY_REGION)
+                        .image_memory_barriers(&[vk::ImageMemoryBarrier2 {
+                            src_stage_mask: vk::PipelineStageFlags2::TOP_OF_PIPE,
+                            dst_stage_mask: vk::PipelineStageFlags2::CLEAR,
+                            src_access_mask: vk::AccessFlags2::NONE,
+                            dst_access_mask: vk::AccessFlags2::TRANSFER_WRITE,
+                            old_layout: vk::ImageLayout::UNDEFINED,
+                            new_layout: vk::ImageLayout::GENERAL,
+                            image: acquired_image.image,
+                            subresource_range: vk::ImageSubresourceRange {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                base_array_layer: 0,
+                                layer_count: 1,
+                                base_mip_level: 0,
+                                level_count: 1,
+                            },
+                            ..Default::default()
+                        }])
+                        .build(),
+                )
+                .clear_color_image(
                     acquired_image.image,
                     vk::ImageLayout::GENERAL,
                     &clear_color_value,
@@ -94,11 +131,32 @@ fn main() {
                         base_mip_level: 0,
                         level_count: 1,
                     }],
+                )
+                .pipeline_barrier(
+                    &vk::DependencyInfo::builder()
+                        .dependency_flags(vk::DependencyFlags::BY_REGION)
+                        .image_memory_barriers(&[vk::ImageMemoryBarrier2 {
+                            src_stage_mask: vk::PipelineStageFlags2::CLEAR,
+                            dst_stage_mask: vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
+                            src_access_mask: vk::AccessFlags2::TRANSFER_WRITE,
+                            dst_access_mask: vk::AccessFlags2::NONE,
+                            old_layout: vk::ImageLayout::GENERAL,
+                            new_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+                            image: acquired_image.image,
+                            subresource_range: vk::ImageSubresourceRange {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                base_array_layer: 0,
+                                layer_count: 1,
+                                base_mip_level: 0,
+                                level_count: 1,
+                            },
+                            ..Default::default()
+                        }])
+                        .build(),
                 );
             })
             .unwrap();
 
-        println!("update2");
         queues
             .of_type(QueueType::Compute)
             .submit(

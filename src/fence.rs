@@ -13,6 +13,11 @@ pub struct Fence {
     pub(crate) fence: vk::Fence,
 }
 
+impl std::fmt::Debug for Fence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("Fence({:?})", self.fence))
+    }
+}
 impl Fence {
     pub fn new(device: Arc<Device>, signaled: bool) -> VkResult<Self> {
         let mut flags = vk::FenceCreateFlags::empty();

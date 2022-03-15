@@ -284,12 +284,12 @@ impl FrameManager {
 /// [`Swapchain`] configuration
 #[derive(Debug, Clone)]
 pub struct Options {
-    frames_in_flight: usize,
-    format_preference: Vec<vk::SurfaceFormatKHR>,
-    present_mode_preference: Vec<vk::PresentModeKHR>,
-    usage: vk::ImageUsageFlags,
-    sharing_mode: vk::SharingMode,
-    composite_alpha: vk::CompositeAlphaFlagsKHR,
+    pub frames_in_flight: usize,
+    pub format_preference: Vec<vk::SurfaceFormatKHR>,
+    pub present_mode_preference: Vec<vk::PresentModeKHR>,
+    pub usage: vk::ImageUsageFlags,
+    pub sharing_mode: vk::SharingMode,
+    pub composite_alpha: vk::CompositeAlphaFlagsKHR,
 }
 
 impl Default for Options {
@@ -321,7 +321,7 @@ struct Frame {
     generation: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AcquiredFrame {
     /// Queue family to present on
     pub present_queue_family: u32,

@@ -9,6 +9,12 @@ pub struct Semaphore {
     pub(crate) semaphore: vk::Semaphore,
 }
 
+impl std::fmt::Debug for Semaphore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("Semaphore({:?})", self.semaphore))
+    }
+}
+
 impl Semaphore {
     pub fn new(device: Arc<Device>) -> VkResult<Self> {
         let create_info = vk::SemaphoreCreateInfo::default();

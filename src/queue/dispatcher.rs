@@ -130,19 +130,15 @@ impl QueueDispatcher {
         let mut submit_infos: Vec<vk::SubmitInfo2> = Vec::with_capacity(submissions.len());
 
         for submission in submissions.iter() {
-            unsafe {
-                submit_infos.push(vk::SubmitInfo2 {
-                    wait_semaphore_info_count: submission.wait_semaphores.len() as u32,
-                    p_wait_semaphore_infos: wait_semaphores.as_ptr().add(wait_semaphores.len()),
-                    command_buffer_info_count: submission.executables.len() as u32,
-                    p_command_buffer_infos: command_buffers.as_ptr().add(command_buffers.len()),
-                    signal_semaphore_info_count: submission.signal_semaphore.len() as u32,
-                    p_signal_semaphore_infos: signal_semaphores
-                        .as_ptr()
-                        .add(signal_semaphores.len()),
-                    ..Default::default()
-                });
-            }
+            submit_infos.push(vk::SubmitInfo2 {
+                wait_semaphore_info_count: submission.wait_semaphores.len() as u32,
+                p_wait_semaphore_infos: wait_semaphores.as_ptr().add(wait_semaphores.len()),
+                command_buffer_info_count: submission.executables.len() as u32,
+                p_command_buffer_infos: command_buffers.as_ptr().add(command_buffers.len()),
+                signal_semaphore_info_count: submission.signal_semaphore.len() as u32,
+                p_signal_semaphore_infos: signal_semaphores.as_ptr().add(signal_semaphores.len()),
+                ..Default::default()
+            });
             for wait in submission.wait_semaphores.iter() {
                 wait_semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: wait.semaphore.semaphore,
@@ -151,7 +147,7 @@ impl QueueDispatcher {
                     ..Default::default()
                 });
             }
-            for signal in submission.wait_semaphores.iter() {
+            for signal in submission.signal_semaphore.iter() {
                 signal_semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: signal.semaphore.semaphore,
                     value: signal.value,
