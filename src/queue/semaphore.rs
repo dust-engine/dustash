@@ -25,6 +25,7 @@ impl Semaphore {
 
 impl Drop for Semaphore {
     fn drop(&mut self) {
+        tracing::debug!(semaphore = ?self.semaphore, "drop semaphore");
         // Safety: Host access to semaphore must be externally synchronized
         // We have &mut self thus exclusive access to self.semaphore
         unsafe {

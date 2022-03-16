@@ -104,6 +104,7 @@ impl Surface {
 
 impl Drop for Surface {
     fn drop(&mut self) {
+        tracing::info!(surface = ?self.surface, "drop surface");
         unsafe {
             self.loader.destroy_surface(self.surface, None);
         }

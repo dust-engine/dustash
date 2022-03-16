@@ -75,9 +75,7 @@ impl Queues {
 
         // We perform queue present after all dispatchers are flushed to ensure that queue present happens last.
         let present_queue = self.queues[frame.present_queue_family as usize].queue.queue;
-        unsafe {
-            frames.present(present_queue, frame)
-        }
+        unsafe { frames.present(present_queue, frame) }
     }
 }
 

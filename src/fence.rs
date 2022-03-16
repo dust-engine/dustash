@@ -92,6 +92,7 @@ impl Fence {
 
 impl Drop for Fence {
     fn drop(&mut self) {
+        tracing::debug!(fence = ?self.fence, "drop fence");
         // Safety: Host Syncronization rule for vkDestroyFence:
         // - Host access to fence must be externally synchronized
         // We have &mut self and thus exclusive control on the fence.
@@ -171,6 +172,7 @@ impl Drop for FenceJoin {
         // We have &mut self and thus exclusive control on the fence.
         unsafe {
             for fence in self.fences.iter() {
+                tracing::debug!(fence = ?fence, "drop fences");
                 self.device.destroy_fence(*fence, None);
             }
         }

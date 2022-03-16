@@ -120,6 +120,7 @@ impl CommandPool {
 
 impl Drop for CommandPool {
     fn drop(&mut self) {
+        tracing::info!(command_pool = ?self.pool, "drop command pool");
         // Safety: Host Syncronization rule for vkDestroyCommandPool:
         // - Host access to commandPool must be externally synchronized
         // We have &mut self and thus ownership on commandPool.
@@ -139,6 +140,7 @@ pub struct CommandBuffer {
 
 impl Drop for CommandBuffer {
     fn drop(&mut self) {
+        tracing::debug!(command_buffer = ?self.buffer, "drop command buffer");
         // Safety: Host Syncronization rule for vkFreeCommandBuffers:
         // - Host access to commandPool must be externally synchronized
         // - Host access to each member of pCommandBuffers must be externally synchronized

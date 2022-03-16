@@ -70,7 +70,6 @@ impl Swapchain {
         wait_semaphores: &[vk::Semaphore],
         image_indice: u32,
     ) -> VkResult<bool> {
-        let mut result: MaybeUninit<vk::Result> = MaybeUninit::uninit();
         self.loader.queue_present(
             queue,
             &vk::PresentInfoKHR {
@@ -92,6 +91,7 @@ impl Swapchain {
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
+        tracing::info!(swapchain = ?self.swapchain, "drop swapchain");
         unsafe {
             self.loader.destroy_swapchain(self.swapchain, None);
         }

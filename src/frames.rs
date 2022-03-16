@@ -1,6 +1,6 @@
 use crate::fence::Fence;
 use crate::queue::semaphore::Semaphore;
-use crate::queue::{QueueType, QueuesCreateInfo, Queues};
+use crate::queue::{QueueType, QueuesCreateInfo};
 use crate::Device;
 use crate::{resources::HasImage, swapchain::Swapchain};
 use ash::{prelude::VkResult, vk};
@@ -55,7 +55,7 @@ impl FrameManager {
             swapchain_loader.device().instance().handle()
         );
         let frames = (0..options.frames_in_flight)
-            .map(|_| unsafe {
+            .map(|_| {
                 Ok(Frame {
                     complete_fence: Arc::new(Fence::new(swapchain_loader.device().clone(), true)?),
                     acquire_semaphore: Arc::new(
@@ -111,6 +111,9 @@ impl FrameManager {
     }
 
     pub fn acquire(&mut self, timeout_ns: u64) -> VkResult<AcquiredFrame> {
+        let span = tracing::info_span!("swapchain acquire");
+        let _enter = span.enter();
+
         let next_frame_index = (self.frame_index + 1) % self.frames.len();
         unsafe {
             self.device().wait_for_fences(
@@ -126,6 +129,7 @@ impl FrameManager {
                     // next frame is still being rendered, and it's using the same swapchain as this one.
                     break;
                 }
+                tracing::event!(tracing::Level::DEBUG, ?swapchain, %generation, "destroy swapchain");
                 self.swapchain_loader.destroy_swapchain(swapchain, None);
                 self.old_swapchains.pop_front();
             }
@@ -142,6 +146,10 @@ impl FrameManager {
                         vk::Fence::null(),
                     ) {
                         Ok((index, suboptimal)) => {
+                            if suboptimal {
+                                tracing::warn!("suboptimal image");
+                                self.needs_rebuild = true;
+                            }
                             self.needs_rebuild = suboptimal;
                             let _invalidate_images =
                                 self.current_frame().generation != self.generation; // TODO: ?
@@ -171,6 +179,9 @@ impl FrameManager {
     }
 
     unsafe fn rebuild_swapchain(&mut self) -> VkResult<()> {
+        let span = tracing::info_span!("rebuild swapchain");
+        let _enter = span.enter();
+
         let surface_capabilities = self
             .surface
             .get_capabilities(self.device().physical_device())?;
@@ -231,6 +242,7 @@ impl FrameManager {
         let old_swapchain = self.swapchain.take();
         // take apart old_swapchain by force
         let (swapchain_loader, old_swapchain) = if let Some(old_swapchain) = old_swapchain {
+            tracing::debug!("recreate old swapchain");
             let swapchain = old_swapchain.swapchain;
             let mut old_swapchain = MaybeUninit::new(old_swapchain);
             let loader = {
@@ -245,6 +257,7 @@ impl FrameManager {
             };
             (loader, swapchain)
         } else {
+            tracing::debug!("create new swapchain");
             (self.swapchain_loader.clone(), vk::SwapchainKHR::null())
         };
 
@@ -280,8 +293,13 @@ impl FrameManager {
         Ok(())
     }
 
-
-    pub unsafe fn present(&mut self, present_queue: vk::Queue, frame: AcquiredFrame) -> VkResult<()> {
+    pub unsafe fn present(
+        &mut self,
+        present_queue: vk::Queue,
+        frame: AcquiredFrame,
+    ) -> VkResult<()> {
+        let span = tracing::info_span!("present", ?present_queue, semaphore = ?frame.complete_semaphore.semaphore, image_indice = ?frame.image_index);
+        let _enter = span.enter();
         // frames.swapchain.is_some() is guaranteed to be true. frames.swapchain is only None on initialization, in which case we wouldn't have AcquiredFrame
         // Safety:
         // - Host access to queue must be externally synchronized. We have &mut self and thus ownership on present_queue.
@@ -294,6 +312,7 @@ impl FrameManager {
             frame.image_index,
         )?;
         if suboptimal {
+            tracing::warn!("suboptimal");
             self.needs_rebuild = true;
         }
         Ok(())

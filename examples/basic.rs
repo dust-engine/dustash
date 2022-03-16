@@ -12,6 +12,7 @@ use winit::{
     window::WindowBuilder,
 };
 fn main() {
+    tracing_subscriber::fmt::init();
     let entry = unsafe { ash::Entry::load().unwrap() };
     let entry = Arc::new(entry);
     let version = entry.try_enumerate_instance_version().unwrap().unwrap();
