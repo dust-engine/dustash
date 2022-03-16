@@ -1,6 +1,6 @@
 use crate::fence::Fence;
 use crate::queue::semaphore::Semaphore;
-use crate::queue::{QueueType, QueuesCreateInfo};
+use crate::queue::{QueueType, QueuesCreateInfo, Queues};
 use crate::Device;
 use crate::{resources::HasImage, swapchain::Swapchain};
 use ash::{prelude::VkResult, vk};
@@ -277,6 +277,25 @@ impl FrameManager {
         self.swapchain = Some(new_swapchain);
         self.needs_rebuild = false;
 
+        Ok(())
+    }
+
+
+    pub unsafe fn present(&mut self, present_queue: vk::Queue, frame: AcquiredFrame) -> VkResult<()> {
+        // frames.swapchain.is_some() is guaranteed to be true. frames.swapchain is only None on initialization, in which case we wouldn't have AcquiredFrame
+        // Safety:
+        // - Host access to queue must be externally synchronized. We have &mut self and thus ownership on present_queue.
+        // - Host access to pPresentInfo->pWaitSemaphores[] must be externally synchronized. We have &mut frames, and frame.complete_semaphore
+        // was borrowed from &mut frames. Therefore, we do have exclusive ownership on frame.complete_semaphore.
+        // - Host access to pPresentInfo->pSwapchains[] must be externally synchronized. We have &mut frames, and thus ownership on frames.swapchain.
+        let suboptimal = self.swapchain.as_mut().unwrap().queue_present(
+            present_queue,
+            &[frame.complete_semaphore.semaphore],
+            frame.image_index,
+        )?;
+        if suboptimal {
+            self.needs_rebuild = true;
+        }
         Ok(())
     }
 }

@@ -76,19 +76,8 @@ impl Queues {
         // We perform queue present after all dispatchers are flushed to ensure that queue present happens last.
         let present_queue = self.queues[frame.present_queue_family as usize].queue.queue;
         unsafe {
-            // frames.swapchain.is_some() is guaranteed to be true. frames.swapchain is only None on initialization, in which case we wouldn't have AcquiredFrame
-            // Safety:
-            // - Host access to queue must be externally synchronized. We have &mut self and thus ownership on present_queue.
-            // - Host access to pPresentInfo->pWaitSemaphores[] must be externally synchronized. We have &mut frames, and frame.complete_semaphore
-            // was borrowed from &mut frames. Therefore, we do have exclusive ownership on frame.complete_semaphore.
-            // - Host access to pPresentInfo->pSwapchains[] must be externally synchronized. We have &mut frames, and thus ownership on frames.swapchain.
-            frames.swapchain.as_mut().unwrap().queue_present(
-                present_queue,
-                &[frame.complete_semaphore.semaphore],
-                frame.image_index,
-            )?;
+            frames.present(present_queue, frame)
         }
-        Ok(())
     }
 }
 

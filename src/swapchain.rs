@@ -71,7 +71,7 @@ impl Swapchain {
         image_indice: u32,
     ) -> VkResult<bool> {
         let mut result: MaybeUninit<vk::Result> = MaybeUninit::uninit();
-        let suboptimal = self.loader.queue_present(
+        self.loader.queue_present(
             queue,
             &vk::PresentInfoKHR {
                 wait_semaphore_count: wait_semaphores.len() as u32,
@@ -79,12 +79,10 @@ impl Swapchain {
                 swapchain_count: 1,
                 p_swapchains: &self.swapchain,
                 p_image_indices: &image_indice,
-                p_results: result.as_mut_ptr(),
+                p_results: std::ptr::null_mut(), // Applications that do not need per-swapchain results can use NULL for pResults.
                 ..Default::default()
             },
-        )?;
-        let result = result.assume_init();
-        result.result_with_success(suboptimal)
+        )
     }
 
     pub fn get_swapchain_images(&self) -> VkResult<Vec<vk::Image>> {
