@@ -8,6 +8,8 @@ use ash::{prelude::VkResult, vk};
 use std::{ffi::CStr, ops::Deref, sync::Arc};
 
 pub mod command;
+mod debug;
+pub use debug::DebugUtilsMessenger;
 pub mod fence;
 pub mod frames;
 pub mod queue;
@@ -18,13 +20,15 @@ pub mod swapchain;
 pub struct Instance {
     entry: Arc<ash::Entry>,
     instance: ash::Instance,
+    debug_utils: DebugUtilsMessenger,
 }
 
 impl Instance {
     pub fn create(entry: Arc<ash::Entry>, info: &vk::InstanceCreateInfo) -> VkResult<Self> {
         // Safety: No Host Syncronization rules for vkCreateInstance.
-        let instance = unsafe { entry.create_instance(info, None)? };
-        Ok(Instance { entry, instance })
+        let mut instance = unsafe { entry.create_instance(info, None)? };
+        let debug_utils = DebugUtilsMessenger::new(&entry, &mut instance)?;
+        Ok(Instance { entry, instance, debug_utils })
     }
     pub fn entry(&self) -> &Arc<ash::Entry> {
         &self.entry
@@ -50,6 +54,7 @@ impl Drop for Instance {
         // because PhysicalDevice retains an Arc to Instance.
         // If there still exist a copy of PhysicalDevice, the Instance wouldn't be dropped.
         unsafe {
+            self.debug_utils.debug_utils.destroy_debug_utils_messenger(self.debug_utils.messenger, None);
             self.instance.destroy_instance(None);
         }
     }

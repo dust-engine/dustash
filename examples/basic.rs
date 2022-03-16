@@ -1,6 +1,7 @@
-use ash::extensions::khr;
+use ash::extensions::{khr, ext};
 use ash::vk;
 use cstr::cstr;
+use dustash::DebugUtilsMessenger;
 use dustash::queue::QueueType;
 use dustash::{command::pool::CommandPool, frames::FrameManager};
 
@@ -24,8 +25,8 @@ fn main() {
         vk::api_version_variant(version)
     );
 
-    let instance = dustash::Instance::create(
-        entry,
+    let mut instance = dustash::Instance::create(
+        entry.clone(),
         &vk::InstanceCreateInfo::builder()
             .application_info(
                 &vk::ApplicationInfo::builder()
@@ -37,6 +38,7 @@ fn main() {
             .enabled_extension_names(&[
                 khr::Surface::name().as_ptr(),
                 khr::Win32Surface::name().as_ptr(),
+                ext::DebugUtils::name().as_ptr(),
             ])
             .build(),
     )
