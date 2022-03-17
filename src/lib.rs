@@ -3,6 +3,7 @@
 #![feature(negative_impls)]
 #![feature(array_methods)]
 #![feature(maybe_uninit_uninit_array)]
+#![feature(const_for)]
 
 use ash::{prelude::VkResult, vk};
 use std::{ffi::CStr, ops::Deref, sync::Arc};
@@ -28,7 +29,11 @@ impl Instance {
         // Safety: No Host Syncronization rules for vkCreateInstance.
         let mut instance = unsafe { entry.create_instance(info, None)? };
         let debug_utils = DebugUtilsMessenger::new(&entry, &mut instance)?;
-        Ok(Instance { entry, instance, debug_utils })
+        Ok(Instance {
+            entry,
+            instance,
+            debug_utils,
+        })
     }
     pub fn entry(&self) -> &Arc<ash::Entry> {
         &self.entry
@@ -54,7 +59,9 @@ impl Drop for Instance {
         // because PhysicalDevice retains an Arc to Instance.
         // If there still exist a copy of PhysicalDevice, the Instance wouldn't be dropped.
         unsafe {
-            self.debug_utils.debug_utils.destroy_debug_utils_messenger(self.debug_utils.messenger, None);
+            self.debug_utils
+                .debug_utils
+                .destroy_debug_utils_messenger(self.debug_utils.messenger, None);
             self.instance.destroy_instance(None);
         }
     }

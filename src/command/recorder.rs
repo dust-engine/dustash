@@ -18,9 +18,9 @@ pub struct CommandExecutable {
 // Note that during the entire lifetime of CommandRecorder, the command buffer remains in a locked state,
 // so it's impossible to reset the command buffer during this time to bring this back to Initial state.
 pub struct CommandRecorder<'a> {
-    device: &'a ash::Device,
-    command_buffer: vk::CommandBuffer,
-    referenced_resources: Vec<Box<dyn Send>>,
+    pub(crate) device: &'a ash::Device,
+    pub(crate) command_buffer: vk::CommandBuffer,
+    pub(crate) referenced_resources: Vec<Box<dyn Send>>,
 }
 
 impl CommandBuffer {

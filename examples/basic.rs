@@ -1,8 +1,8 @@
-use ash::extensions::{khr, ext};
+use ash::extensions::{ext, khr};
 use ash::vk;
 use cstr::cstr;
-use dustash::DebugUtilsMessenger;
 use dustash::queue::QueueType;
+use dustash::DebugUtilsMessenger;
 use dustash::{command::pool::CommandPool, frames::FrameManager};
 
 use std::sync::Arc;

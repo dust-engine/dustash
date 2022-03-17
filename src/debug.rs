@@ -36,7 +36,6 @@ impl DebugUtilsMessenger {
     }
 }
 
-
 unsafe extern "system" fn debug_utils_callback<'a>(
     severity: vk::DebugUtilsMessageSeverityFlagsEXT,
     _types: vk::DebugUtilsMessageTypeFlagsEXT,
@@ -51,26 +50,43 @@ unsafe extern "system" fn debug_utils_callback<'a>(
     let message_id_name: &'a CStr = CStr::from_ptr(callback_data.p_message_id_name);
     let message_id_number = callback_data.message_id_number;
     let message: &'a CStr = CStr::from_ptr(callback_data.p_message);
-    let _queue_labels: &'a [vk::DebugUtilsLabelEXT] = std::slice::from_raw_parts(callback_data.p_queue_labels, callback_data.queue_label_count as usize);
-    let _cmd_buf_labels: &'a [vk::DebugUtilsLabelEXT] = std::slice::from_raw_parts(callback_data.p_cmd_buf_labels, callback_data.cmd_buf_label_count as usize);
-    let _objects: &'a [vk::DebugUtilsObjectNameInfoEXT] = std::slice::from_raw_parts(callback_data.p_objects, callback_data.object_count as usize);
-    
+    let _queue_labels: &'a [vk::DebugUtilsLabelEXT] = std::slice::from_raw_parts(
+        callback_data.p_queue_labels,
+        callback_data.queue_label_count as usize,
+    );
+    let _cmd_buf_labels: &'a [vk::DebugUtilsLabelEXT] = std::slice::from_raw_parts(
+        callback_data.p_cmd_buf_labels,
+        callback_data.cmd_buf_label_count as usize,
+    );
+    let _objects: &'a [vk::DebugUtilsObjectNameInfoEXT] =
+        std::slice::from_raw_parts(callback_data.p_objects, callback_data.object_count as usize);
+
     let level = match severity {
         vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => Level::DEBUG,
         vk::DebugUtilsMessageSeverityFlagsEXT::INFO => Level::INFO,
         vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => Level::WARN,
         vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => Level::ERROR,
-        _ => Level::TRACE
+        _ => Level::TRACE,
     };
 
     match level {
-        Level::ERROR => tracing::error!(message=?message_id_name, id=message_id_number, detail=?message),
-        Level::WARN => tracing::warn!(message=?message_id_name, id=message_id_number, detail=?message),
-        Level::DEBUG => tracing::debug!(message=?message_id_name, id=message_id_number, detail=?message),
-        Level::TRACE => tracing::trace!(message=?message_id_name, id=message_id_number, detail=?message),
-        Level::INFO => tracing::info!(message=?message_id_name, id=message_id_number, detail=?message)
+        Level::ERROR => {
+            tracing::error!(message=?message_id_name, id=message_id_number, detail=?message)
+        }
+        Level::WARN => {
+            tracing::warn!(message=?message_id_name, id=message_id_number, detail=?message)
+        }
+        Level::DEBUG => {
+            tracing::debug!(message=?message_id_name, id=message_id_number, detail=?message)
+        }
+        Level::TRACE => {
+            tracing::trace!(message=?message_id_name, id=message_id_number, detail=?message)
+        }
+        Level::INFO => {
+            tracing::info!(message=?message_id_name, id=message_id_number, detail=?message)
+        }
     };
-    
+
     // The callback returns a VkBool32, which is interpreted in a layer-specified manner.
     // The application should always return VK_FALSE. The VK_TRUE value is reserved for use in layer development.
     vk::FALSE
