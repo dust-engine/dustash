@@ -45,6 +45,7 @@ use ash::vk;
 
 #[derive(Copy, Clone)]
 pub enum AccessType {
+    None,
     /// Command buffer read operation as defined by NV_device_generated_commands.
     /// Requires VK_NV_device_generated_commands to be enabled.
     CommandBufferReadNV,
@@ -224,6 +225,11 @@ impl AccessType {
     }
     const fn to_vk(&self) -> VkAccessInfo {
         match self {
+            AccessType::None => VkAccessInfo {
+                stage_mask: vk::PipelineStageFlags::empty(),
+                access_mask: vk::AccessFlags::empty(),
+                image_layout: vk::ImageLayout::UNDEFINED
+            },
             AccessType::CommandBufferReadNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::COMMAND_PREPROCESS_NV,
                 access_mask: vk::AccessFlags::COMMAND_PREPROCESS_READ_NV,
@@ -619,8 +625,8 @@ pub enum ImageLayout {
 /// layouts) then a global barrier should be preferred.
 /// Simply define the previous and next access types of resources affected.
 pub struct MemoryBarrier<'a> {
-    prev_accesses: &'a [AccessType],
-    next_accesses: &'a [AccessType],
+    pub prev_accesses: &'a [AccessType],
+    pub next_accesses: &'a [AccessType],
 }
 
 /// Buffer barriers should only be used when a queue family ownership transfer
@@ -638,13 +644,13 @@ pub struct MemoryBarrier<'a> {
 /// queue in the destination queue family, with a semaphore guaranteeing
 /// execution order between them.
 pub struct BufferBarrier<'a> {
-    memory_barrier: MemoryBarrier<'a>,
+    pub memory_barrier: MemoryBarrier<'a>,
 
-    src_queue_family_index: u32,
-    dst_queue_family_index: u32,
-    buffer: vk::Buffer,
-    offset: vk::DeviceSize,
-    size: vk::DeviceSize,
+    pub src_queue_family_index: u32,
+    pub dst_queue_family_index: u32,
+    pub buffer: vk::Buffer,
+    pub offset: vk::DeviceSize,
+    pub size: vk::DeviceSize,
 }
 
 /// Image barriers should only be used when a queue family ownership transfer
@@ -672,14 +678,14 @@ pub struct BufferBarrier<'a> {
 /// going to be immediately overwritten. A good example of when to use this is
 /// when an application re-uses a presented image after vkAcquireNextImageKHR.
 pub struct ImageBarrier<'a> {
-    memory_barrier: MemoryBarrier<'a>,
-    prev_layout: ImageLayout,
-    next_layout: ImageLayout,
-    discard_contents: bool,
-    src_queue_family_index: u32,
-    dst_queue_family_index: u32,
-    image: vk::Image,
-    subresource_range: vk::ImageSubresourceRange,
+    pub memory_barrier: MemoryBarrier<'a>,
+    pub prev_layout: ImageLayout,
+    pub next_layout: ImageLayout,
+    pub discard_contents: bool,
+    pub src_queue_family_index: u32,
+    pub dst_queue_family_index: u32,
+    pub image: vk::Image,
+    pub subresource_range: vk::ImageSubresourceRange,
 }
 
 /// Returns: (srcStages, dstStages)
@@ -981,9 +987,9 @@ impl<'a> CommandRecorder<'a> {
     /// Insert a memory dependency.
     /// Pipeline Barrier parameters are generated at compile time.
     pub fn simple_const_pipeline_barrier<const BL: usize, const IL: usize>(
-        &self,
+        &mut self,
         barrier: &PipelineBarrierConst<BL, IL>,
-    ) {
+    ) -> &mut Self {
         unsafe {
             self.device.cmd_pipeline_barrier(
                 self.command_buffer,
@@ -998,10 +1004,11 @@ impl<'a> CommandRecorder<'a> {
                 barrier.image_barriers.as_ref(),
             )
         }
+        self
     }
 
     /// Insert a memory dependency.
-    pub fn simple_pipeline_barrier(&self, barrier: &PipelineBarrier) {
+    pub fn simple_pipeline_barrier(&mut self, barrier: &PipelineBarrier) -> &mut Self {
         unsafe {
             self.device.cmd_pipeline_barrier(
                 self.command_buffer,
@@ -1016,5 +1023,6 @@ impl<'a> CommandRecorder<'a> {
                 barrier.image_barriers.as_ref(),
             )
         }
+        self
     }
 }
