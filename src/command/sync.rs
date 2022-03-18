@@ -43,9 +43,8 @@ use std::{mem::MaybeUninit, ptr::null};
 use super::recorder::CommandRecorder;
 use ash::vk;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum AccessType {
-    None,
     /// Command buffer read operation as defined by NV_device_generated_commands.
     /// Requires VK_NV_device_generated_commands to be enabled.
     CommandBufferReadNV,
@@ -193,6 +192,8 @@ pub enum AccessType {
     AnyShaderWrite,
     /// Written as the destination of a transfer operation
     TransferWrite,
+    /// Written as the destination of a clear operation
+    ClearWrite,
     /// Data pre-filled by host before device access starts
     HostPreinitialized,
     /// Written on the host
@@ -225,11 +226,6 @@ impl AccessType {
     }
     const fn to_vk(&self) -> VkAccessInfo {
         match self {
-            AccessType::None => VkAccessInfo {
-                stage_mask: vk::PipelineStageFlags::empty(),
-                access_mask: vk::AccessFlags::empty(),
-                image_layout: vk::ImageLayout::UNDEFINED
-            },
             AccessType::CommandBufferReadNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::COMMAND_PREPROCESS_NV,
                 access_mask: vk::AccessFlags::COMMAND_PREPROCESS_READ_NV,
@@ -570,6 +566,11 @@ impl AccessType {
                 access_mask: vk::AccessFlags::TRANSFER_WRITE,
                 image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             },
+            AccessType::ClearWrite => VkAccessInfo {
+                stage_mask: vk::PipelineStageFlags::TRANSFER,
+                access_mask: vk::AccessFlags::TRANSFER_WRITE,
+                image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            },
             AccessType::HostPreinitialized => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::HOST,
                 access_mask: vk::AccessFlags::HOST_WRITE,
@@ -710,12 +711,15 @@ impl<'a> MemoryBarrier<'a> {
         while i < self.prev_accesses.len() {
             let prev_access = &self.prev_accesses[i];
             let info = prev_access.to_vk();
+            // Asserts that the access is a read, else it's a write and it should appear on its own.
             assert!(
                 prev_access.is_read_only() || self.prev_accesses.len() == 1,
                 "Multiple Writes"
             );
             src_stages =
                 vk::PipelineStageFlags::from_raw(src_stages.as_raw() | info.stage_mask.as_raw());
+
+            // Add appropriate availability operations - for writes only.
             if prev_access.is_write() {
                 barrier.src_access_mask = vk::AccessFlags::from_raw(
                     barrier.src_access_mask.as_raw() | info.access_mask.as_raw(),
@@ -733,6 +737,10 @@ impl<'a> MemoryBarrier<'a> {
             );
             dst_stages =
                 vk::PipelineStageFlags::from_raw(dst_stages.as_raw() | info.stage_mask.as_raw());
+
+            // Add visibility operations as necessary.
+            // If the src access mask is zero, this is a WAR hazard (or for some reason a "RAR"),
+            // so the dst access mask can be safely zeroed as these don't need visibility.
             if !barrier.src_access_mask.is_empty() {
                 barrier.dst_access_mask = vk::AccessFlags::from_raw(
                     barrier.dst_access_mask.as_raw() | info.access_mask.as_raw(),
@@ -740,6 +748,7 @@ impl<'a> MemoryBarrier<'a> {
             }
             i = i + 1;
         }
+        // Ensure that the stage masks are valid if no stages were determined
         if src_stages.is_empty() {
             src_stages = vk::PipelineStageFlags::TOP_OF_PIPE;
         }
@@ -825,6 +834,16 @@ impl<'a> ImageBarrier<'a> {
             while i < self.memory_barrier.next_accesses.len() {
                 let next_access = &self.memory_barrier.next_accesses[i];
                 let info = next_access.to_vk();
+
+                // neo: Additionally, if old layout is vk::ImageLayout::UNDEFINED,
+                // dst_access_mask should still be added even if src_access_mask is empty.
+                if barrier.old_layout.as_raw() == vk::ImageLayout::UNDEFINED.as_raw() {
+                    barrier.dst_access_mask = vk::AccessFlags::from_raw(
+                        barrier.dst_access_mask.as_raw() | info.access_mask.as_raw(),
+                    );
+                }
+
+
                 let layout = match self.next_layout {
                     ImageLayout::General if *next_access as u32 == AccessType::Present as u32 => {
                         vk::ImageLayout::PRESENT_SRC_KHR
@@ -1024,5 +1043,38 @@ impl<'a> CommandRecorder<'a> {
             )
         }
         self
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    #[test]
+    fn single_clear_img() {
+        let (src, dst, barrier) = ImageBarrier {
+            memory_barrier: MemoryBarrier {
+                prev_accesses: &[],
+                next_accesses: &[AccessType::ClearWrite],
+            },
+            prev_layout: ImageLayout::Optimal,
+            next_layout: ImageLayout::Optimal,
+            discard_contents: true,
+            src_queue_family_index: 0,
+            dst_queue_family_index: 0,
+            image: vk::Image::null(),
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_array_layer: 0,
+                layer_count: 1,
+                base_mip_level: 0,
+                level_count: 1,
+            },
+        }.to_vk();
+        assert_eq!(src, vk::PipelineStageFlags::TOP_OF_PIPE);
+        assert_eq!(dst, vk::PipelineStageFlags::TRANSFER);
+        assert_eq!(barrier.src_access_mask, vk::AccessFlags::NONE);
+        assert_eq!(barrier.dst_access_mask, vk::AccessFlags::TRANSFER_WRITE);
     }
 }

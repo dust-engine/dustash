@@ -108,7 +108,7 @@ fn main() {
                     &[
                         ImageBarrier {
                             memory_barrier: MemoryBarrier {
-                                prev_accesses: &[AccessType::None],
+                                prev_accesses: &[],
                                 next_accesses: &[AccessType::TransferWrite],
                             },
                             prev_layout: dustash::command::sync::ImageLayout::Optimal,
