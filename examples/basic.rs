@@ -1,9 +1,8 @@
 use ash::extensions::{ext, khr};
 use ash::vk;
 use cstr::cstr;
-use dustash::command::sync::{PipelineBarrierConst, ImageBarrier, MemoryBarrier, AccessType, PipelineBarrier};
+use dustash::command::sync2::{AccessType, ImageBarrier, MemoryBarrier, PipelineBarrierConst};
 use dustash::queue::QueueType;
-use dustash::DebugUtilsMessenger;
 use dustash::{command::pool::CommandPool, frames::FrameManager};
 
 use std::sync::Arc;
@@ -102,30 +101,28 @@ fn main() {
                 let clear_color_value = vk::ClearColorValue {
                     float32: [0.0, 1.0, 0.0, 1.0],
                 };
-                cr.simple_pipeline_barrier(&PipelineBarrier::new(
+                cr.simple_const_pipeline_barrier2(&PipelineBarrierConst::new(
                     None,
                     &[],
-                    &[
-                        ImageBarrier {
-                            memory_barrier: MemoryBarrier {
-                                prev_accesses: &[],
-                                next_accesses: &[AccessType::TransferWrite],
-                            },
-                            prev_layout: dustash::command::sync::ImageLayout::Optimal,
-                            next_layout: dustash::command::sync::ImageLayout::Optimal,
-                            discard_contents: true,
-                            src_queue_family_index: queues.of_type(QueueType::Compute).family_index(),
-                            dst_queue_family_index: queues.of_type(QueueType::Compute).family_index(),
-                            image: acquired_image.image,
-                            subresource_range: vk::ImageSubresourceRange {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                base_array_layer: 0,
-                                layer_count: 1,
-                                base_mip_level: 0,
-                                level_count: 1,
-                            },
-                        }
-                    ],
+                    &[ImageBarrier {
+                        memory_barrier: MemoryBarrier {
+                            prev_accesses: &[],
+                            next_accesses: &[AccessType::ClearWrite],
+                        },
+                        prev_layout: dustash::command::sync::ImageLayout::Optimal,
+                        next_layout: dustash::command::sync::ImageLayout::Optimal,
+                        discard_contents: true,
+                        src_queue_family_index: queues.of_type(QueueType::Compute).family_index(),
+                        dst_queue_family_index: queues.of_type(QueueType::Compute).family_index(),
+                        image: acquired_image.image,
+                        subresource_range: vk::ImageSubresourceRange {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                            base_mip_level: 0,
+                            level_count: 1,
+                        },
+                    }],
                     vk::DependencyFlags::BY_REGION,
                 ))
                 .clear_color_image(
@@ -140,31 +137,28 @@ fn main() {
                         level_count: 1,
                     }],
                 )
-
-                .simple_pipeline_barrier(&PipelineBarrier::new(
+                .simple_const_pipeline_barrier2(&PipelineBarrierConst::new(
                     None,
                     &[],
-                    &[
-                        ImageBarrier {
-                            memory_barrier: MemoryBarrier {
-                                prev_accesses: &[AccessType::TransferWrite],
-                                next_accesses: &[AccessType::Present],
-                            },
-                            prev_layout: dustash::command::sync::ImageLayout::Optimal,
-                            next_layout: dustash::command::sync::ImageLayout::Optimal,
-                            discard_contents: false,
-                            src_queue_family_index: queues.of_type(QueueType::Compute).family_index(),
-                            dst_queue_family_index: queues.of_type(QueueType::Compute).family_index(),
-                            image: acquired_image.image,
-                            subresource_range: vk::ImageSubresourceRange {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                base_array_layer: 0,
-                                layer_count: 1,
-                                base_mip_level: 0,
-                                level_count: 1,
-                            },
-                        }
-                    ],
+                    &[ImageBarrier {
+                        memory_barrier: MemoryBarrier {
+                            prev_accesses: &[AccessType::ClearWrite],
+                            next_accesses: &[AccessType::Present],
+                        },
+                        prev_layout: dustash::command::sync::ImageLayout::Optimal,
+                        next_layout: dustash::command::sync::ImageLayout::Optimal,
+                        discard_contents: false,
+                        src_queue_family_index: queues.of_type(QueueType::Compute).family_index(),
+                        dst_queue_family_index: queues.of_type(QueueType::Compute).family_index(),
+                        image: acquired_image.image,
+                        subresource_range: vk::ImageSubresourceRange {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                            base_mip_level: 0,
+                            level_count: 1,
+                        },
+                    }],
                     vk::DependencyFlags::BY_REGION,
                 ));
             })

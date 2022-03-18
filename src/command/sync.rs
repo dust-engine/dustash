@@ -126,8 +126,17 @@ pub enum AccessType {
     AnyShaderReadSampledImageOrUniformTexelBuffer,
     /// Read as any other resource (excluding attachments) in any shader
     AnyShaderReadOther,
+
     /// Read as the source of a transfer operation
     TransferRead,
+    /// Read as the source of a copy operation
+    CopyRead,
+    /// Read as the source of a blit operation
+    BlitRead,
+    /// Read as the source of a resolve operation
+    ResolveRead,
+
+
     /// Read on the host
     HostRead,
 
@@ -190,10 +199,18 @@ pub enum AccessType {
     ComputeShaderWrite,
     /// Written as any resource in any shader
     AnyShaderWrite,
+
     /// Written as the destination of a transfer operation
     TransferWrite,
-    /// Written as the destination of a clear operation
+    /// Written as the target of a copy operation
+    CopyWrite,
+    /// Written as the target of a blit operation
+    BlitWrite,
+    /// Written as the target of a resolve operation
+    ResolveWrite,
+    /// Written as the destination of a clear operation, with the exception of vkCmdClearAttachments.
     ClearWrite,
+
     /// Data pre-filled by host before device access starts
     HostPreinitialized,
     /// Written on the host
@@ -211,17 +228,17 @@ pub enum AccessType {
 }
 
 struct VkAccessInfo {
-    stage_mask: vk::PipelineStageFlags,
-    access_mask: vk::AccessFlags,
-    image_layout: vk::ImageLayout,
+    pub(crate) stage_mask: vk::PipelineStageFlags,
+    pub(crate) access_mask: vk::AccessFlags,
+    pub(crate) image_layout: vk::ImageLayout,
 }
 
 impl AccessType {
-    const fn is_read_only(&self) -> bool {
+    pub const fn is_read_only(&self) -> bool {
         let this = *self as u32;
         this <= (Self::Present as u32)
     }
-    const fn is_write(&self) -> bool {
+    pub const fn is_write(&self) -> bool {
         (*self as u32) > (Self::Present as u32)
     }
     const fn to_vk(&self) -> VkAccessInfo {
@@ -436,7 +453,10 @@ impl AccessType {
                 access_mask: vk::AccessFlags::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TransferRead => VkAccessInfo {
+            AccessType::TransferRead |
+            AccessType::CopyRead |
+            AccessType::BlitRead |
+            AccessType::ResolveRead => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::TRANSFER,
                 access_mask: vk::AccessFlags::TRANSFER_READ,
                 image_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -561,12 +581,11 @@ impl AccessType {
                 access_mask: vk::AccessFlags::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TransferWrite => VkAccessInfo {
-                stage_mask: vk::PipelineStageFlags::TRANSFER,
-                access_mask: vk::AccessFlags::TRANSFER_WRITE,
-                image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            },
-            AccessType::ClearWrite => VkAccessInfo {
+            AccessType::TransferWrite |
+            AccessType::CopyWrite |
+            AccessType::BlitWrite |
+            AccessType::ClearWrite |
+            AccessType::ResolveWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::TRANSFER,
                 access_mask: vk::AccessFlags::TRANSFER_WRITE,
                 image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
