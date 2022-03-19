@@ -60,10 +60,10 @@ impl Surface {
         &self,
         pdevice: &PhysicalDevice,
     ) -> VkResult<vk::SurfaceCapabilitiesKHR> {
-        assert_eq!(pdevice.instance.handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
+        assert_eq!(pdevice.instance().handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
         unsafe {
             self.loader
-                .get_physical_device_surface_capabilities(pdevice.physical_device, self.surface)
+                .get_physical_device_surface_capabilities(pdevice.raw(), self.surface)
         }
     }
 
@@ -73,10 +73,10 @@ impl Surface {
         pdevice: &PhysicalDevice,
         queue_family_index: u32,
     ) -> VkResult<bool> {
-        assert_eq!(pdevice.instance.handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
+        assert_eq!(pdevice.instance().handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
         unsafe {
             self.loader.get_physical_device_surface_support(
-                pdevice.physical_device,
+                pdevice.raw(),
                 queue_family_index,
                 self.surface,
             )
@@ -85,19 +85,19 @@ impl Surface {
 
     /// Query color formats supported by surface
     pub fn get_formats(&self, pdevice: &PhysicalDevice) -> VkResult<Vec<vk::SurfaceFormatKHR>> {
-        assert_eq!(pdevice.instance.handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
+        assert_eq!(pdevice.instance().handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
         unsafe {
             self.loader
-                .get_physical_device_surface_formats(pdevice.physical_device, self.surface)
+                .get_physical_device_surface_formats(pdevice.raw(), self.surface)
         }
     }
 
     /// Query color formats supported by surface
     pub fn get_present_modes(&self, pdevice: &PhysicalDevice) -> VkResult<Vec<vk::PresentModeKHR>> {
-        assert_eq!(pdevice.instance.handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
+        assert_eq!(pdevice.instance().handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");
         unsafe {
             self.loader
-                .get_physical_device_surface_present_modes(pdevice.physical_device, self.surface)
+                .get_physical_device_surface_present_modes(pdevice.raw(), self.surface)
         }
     }
 }

@@ -29,6 +29,8 @@ impl Timeline {
         })
     }
 
+    /// Schedule to perform a GPU task
+    ///
     /// wait_stages: Block the execution of these stages until the semaphore was signaled.
     /// Stages not specified in wait_stages can proceed before the semaphore signal operation.
     ///
@@ -70,6 +72,7 @@ impl Timeline {
     TODO: For pipelined ops, there might be a need to signal multiple semaphores on multiple pipeline stages.
     We need to figure out a way to do this. For example, next() might need to return multiple branches.
     */
+    /// Schedule to perform a CPU task
     pub fn then(&mut self, task: impl Future<Output = VkResult<()>> + 'static) -> &mut Self {
         let semaphore_to_wait = if self.index == 0 && self.parent_semaphore.is_none() {
             None

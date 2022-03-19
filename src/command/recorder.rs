@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use ash::{prelude::VkResult, vk};
 
-use crate::resources::{self, HasImage};
+use crate::resources::{buffer::HasBuffer, HasImage};
 
 use super::pool::CommandBuffer;
 
@@ -64,10 +62,10 @@ impl CommandBuffer {
 }
 
 impl<'a> CommandRecorder<'a> {
-    pub fn copy_buffer(
+    pub fn copy_buffer<SRC: HasBuffer + Send + 'static, DST: HasBuffer + Send + 'static>(
         &mut self,
-        src_buffer: Arc<resources::Buffer>,
-        dst_buffer: Arc<resources::Buffer>,
+        src_buffer: SRC,
+        dst_buffer: DST,
         regions: &[vk::BufferCopy],
     ) -> &mut Self {
         // Safety: Host Syncronization rule for vkCmdCopyBuffer:
@@ -78,13 +76,17 @@ impl<'a> CommandRecorder<'a> {
         unsafe {
             self.device.cmd_copy_buffer(
                 self.command_buffer,
-                src_buffer.buffer,
-                dst_buffer.buffer,
+                src_buffer.raw_buffer(),
+                dst_buffer.raw_buffer(),
                 regions,
             );
         }
-        self.referenced_resources.push(Box::new(src_buffer));
-        self.referenced_resources.push(Box::new(dst_buffer)); // TODO
+        if std::mem::needs_drop::<SRC>() {
+            self.referenced_resources.push(Box::new(src_buffer));
+        }
+        if std::mem::needs_drop::<DST>() {
+            self.referenced_resources.push(Box::new(dst_buffer));
+        }
         self
     }
 

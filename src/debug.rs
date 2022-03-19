@@ -2,8 +2,6 @@ use ash::extensions::ext;
 use ash::{prelude::VkResult, vk};
 use std::ffi::CStr;
 
-use crate::Instance;
-
 pub struct DebugUtilsMessenger {
     pub(crate) debug_utils: ext::DebugUtils,
     pub(crate) messenger: vk::DebugUtilsMessengerEXT,

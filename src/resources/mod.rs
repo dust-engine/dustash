@@ -1,19 +1,10 @@
 use std::sync::Arc;
-
+pub mod alloc;
+pub mod buffer;
 use ash::extensions::*;
 use ash::vk;
 
-pub struct Buffer {
-    device: Arc<ash::Device>,
-    pub(crate) buffer: vk::Buffer,
-}
-
-impl Drop for Buffer {
-    fn drop(&mut self) {
-        tracing::debug!(buffer = ?self.buffer, "drop buffer");
-        unsafe { self.device.destroy_buffer(self.buffer, None) }
-    }
-}
+pub use buffer::Buffer;
 
 pub trait HasImage {
     fn raw_image(&self) -> vk::Image;

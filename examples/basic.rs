@@ -46,8 +46,10 @@ fn main() {
     let instance = Arc::new(instance);
 
     let physical_devices = dustash::PhysicalDevice::enumerate(&instance).unwrap();
-    let (device, mut queues) = physical_devices[0]
-        .clone()
+    let (device, mut queues) = physical_devices
+        .into_iter()
+        .next()
+        .unwrap()
         .create_device(
             &[],
             &[khr::Swapchain::name()],
