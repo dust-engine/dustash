@@ -1,11 +1,10 @@
-
-use std::{ptr::null, mem::MaybeUninit};
+use std::{mem::MaybeUninit, ptr::null};
 
 use ash::vk;
 
-use crate::command::sync::ImageLayout;
-pub use super::sync::{AccessType, MemoryBarrier, BufferBarrier, ImageBarrier};
 use super::recorder::CommandRecorder;
+pub use super::sync::{AccessType, BufferBarrier, ImageBarrier, MemoryBarrier};
+use crate::command::sync::ImageLayout;
 struct VkAccessInfo2 {
     stage_mask: vk::PipelineStageFlags2,
     access_mask: vk::AccessFlags2,
@@ -416,7 +415,8 @@ impl AccessType {
             AccessType::General => VkAccessInfo2 {
                 stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
                 access_mask: vk::AccessFlags2::from_raw(
-                    vk::AccessFlags2::MEMORY_READ.as_raw() | vk::AccessFlags2::MEMORY_WRITE.as_raw(),
+                    vk::AccessFlags2::MEMORY_READ.as_raw()
+                        | vk::AccessFlags2::MEMORY_WRITE.as_raw(),
                 ),
                 image_layout: vk::ImageLayout::GENERAL,
             },
@@ -426,10 +426,7 @@ impl AccessType {
 
 /// Returns: (srcStages, dstStages)
 impl<'a> MemoryBarrier<'a> {
-    const fn to_vk2(
-        &self,
-    ) -> vk::MemoryBarrier2 {
-
+    const fn to_vk2(&self) -> vk::MemoryBarrier2 {
         let mut barrier = vk::MemoryBarrier2 {
             s_type: vk::StructureType::MEMORY_BARRIER_2,
             p_next: null(),
@@ -493,9 +490,7 @@ impl<'a> MemoryBarrier<'a> {
 }
 
 impl<'a> BufferBarrier<'a> {
-    const fn to_vk2(
-        &self,
-    ) -> vk::BufferMemoryBarrier2 {
+    const fn to_vk2(&self) -> vk::BufferMemoryBarrier2 {
         assert!(self.src_queue_family_index != self.dst_queue_family_index, "BufferBarrier should only be used when a queue family ownership transfer is required. Use MemoryBarrier instead.");
         let barrier = self.memory_barrier.to_vk2();
         let barrier = vk::BufferMemoryBarrier2 {
@@ -516,9 +511,7 @@ impl<'a> BufferBarrier<'a> {
 }
 
 impl<'a> ImageBarrier<'a> {
-    const fn to_vk2(
-        &self,
-    ) -> vk::ImageMemoryBarrier2 {
+    const fn to_vk2(&self) -> vk::ImageMemoryBarrier2 {
         let barrier = self.memory_barrier.to_vk2();
         let mut barrier = vk::ImageMemoryBarrier2 {
             s_type: vk::StructureType::IMAGE_MEMORY_BARRIER_2,
@@ -571,7 +564,6 @@ impl<'a> ImageBarrier<'a> {
                         barrier.dst_access_mask.as_raw() | info.access_mask.as_raw(),
                     );
                 }
-
 
                 let layout = match self.next_layout {
                     ImageLayout::General if *next_access as u32 == AccessType::Present as u32 => {
@@ -649,8 +641,12 @@ impl<const BL: usize, const IL: usize> PipelineBarrierConst<BL, IL> {
             s_type: vk::StructureType::DEPENDENCY_INFO,
             p_next: null(),
             dependency_flags: self.dependency_flag,
-            memory_barrier_count: if self.memory_barrier.is_some() {1} else {0},
-            p_memory_barriers: self.memory_barrier.as_ref().map(ref_to_ptr).unwrap_or(null()),
+            memory_barrier_count: if self.memory_barrier.is_some() { 1 } else { 0 },
+            p_memory_barriers: self
+                .memory_barrier
+                .as_ref()
+                .map(ref_to_ptr)
+                .unwrap_or(null()),
             buffer_memory_barrier_count: self.buffer_barriers.len() as u32,
             p_buffer_memory_barriers: self.buffer_barriers.as_ptr(),
             image_memory_barrier_count: self.image_barriers.len() as u32,
@@ -658,7 +654,6 @@ impl<const BL: usize, const IL: usize> PipelineBarrierConst<BL, IL> {
         }
     }
 }
-
 
 pub struct PipelineBarrier {
     dependency_flag: vk::DependencyFlags,
@@ -687,8 +682,12 @@ impl PipelineBarrier {
     fn to_dependency_info(&self) -> vk::DependencyInfo {
         vk::DependencyInfo {
             dependency_flags: self.dependency_flag,
-            memory_barrier_count: if self.memory_barrier.is_some() {1} else {0},
-            p_memory_barriers: self.memory_barrier.as_ref().map(|a| a as *const _).unwrap_or(null()),
+            memory_barrier_count: if self.memory_barrier.is_some() { 1 } else { 0 },
+            p_memory_barriers: self
+                .memory_barrier
+                .as_ref()
+                .map(|a| a as *const _)
+                .unwrap_or(null()),
             buffer_memory_barrier_count: self.buffer_barriers.len() as u32,
             p_buffer_memory_barriers: self.buffer_barriers.as_ptr(),
             image_memory_barrier_count: self.image_barriers.len() as u32,
@@ -707,10 +706,8 @@ impl<'a> CommandRecorder<'a> {
     ) -> &mut Self {
         let dep_info = barrier.to_dependency_info();
         unsafe {
-            self.device.cmd_pipeline_barrier2(
-                self.command_buffer,
-                &dep_info
-            )
+            self.device
+                .cmd_pipeline_barrier2(self.command_buffer, &dep_info)
         }
         self
     }
@@ -719,15 +716,12 @@ impl<'a> CommandRecorder<'a> {
     pub fn simple_pipeline_barrier2(&mut self, barrier: &PipelineBarrier) -> &mut Self {
         let dep_info = barrier.to_dependency_info();
         unsafe {
-            self.device.cmd_pipeline_barrier2(
-                self.command_buffer,
-                &dep_info
-            )
+            self.device
+                .cmd_pipeline_barrier2(self.command_buffer, &dep_info)
         }
         self
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -753,7 +747,8 @@ mod test {
                 base_mip_level: 0,
                 level_count: 1,
             },
-        }.to_vk2();
+        }
+        .to_vk2();
         assert_eq!(barrier.src_stage_mask, vk::PipelineStageFlags2::TOP_OF_PIPE);
         assert_eq!(barrier.dst_stage_mask, vk::PipelineStageFlags2::TRANSFER);
         assert_eq!(barrier.src_access_mask, vk::AccessFlags2::NONE);

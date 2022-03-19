@@ -20,8 +20,13 @@ impl DebugUtilsMessenger {
             // We do this by taking a mutable reference to Instance.
             debug_utils.create_debug_utils_messenger(
                 &vk::DebugUtilsMessengerCreateInfoEXT {
-                    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
-                    message_type: vk::DebugUtilsMessageTypeFlagsEXT::GENERAL,
+                    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                    message_type: vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
                     pfn_user_callback: Some(debug_utils_callback),
                     //p_user_data: *mut c_void,
                     ..Default::default()

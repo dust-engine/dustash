@@ -4,6 +4,7 @@
 #![feature(array_methods)]
 #![feature(maybe_uninit_uninit_array)]
 #![feature(const_for)]
+#![feature(const_option_ext)]
 
 use ash::{prelude::VkResult, vk};
 use std::{ffi::CStr, ops::Deref, sync::Arc};

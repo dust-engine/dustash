@@ -136,7 +136,6 @@ pub enum AccessType {
     /// Read as the source of a resolve operation
     ResolveRead,
 
-
     /// Read on the host
     HostRead,
 
@@ -453,10 +452,10 @@ impl AccessType {
                 access_mask: vk::AccessFlags::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TransferRead |
-            AccessType::CopyRead |
-            AccessType::BlitRead |
-            AccessType::ResolveRead => VkAccessInfo {
+            AccessType::TransferRead
+            | AccessType::CopyRead
+            | AccessType::BlitRead
+            | AccessType::ResolveRead => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::TRANSFER,
                 access_mask: vk::AccessFlags::TRANSFER_READ,
                 image_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -581,11 +580,11 @@ impl AccessType {
                 access_mask: vk::AccessFlags::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TransferWrite |
-            AccessType::CopyWrite |
-            AccessType::BlitWrite |
-            AccessType::ClearWrite |
-            AccessType::ResolveWrite => VkAccessInfo {
+            AccessType::TransferWrite
+            | AccessType::CopyWrite
+            | AccessType::BlitWrite
+            | AccessType::ClearWrite
+            | AccessType::ResolveWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::TRANSFER,
                 access_mask: vk::AccessFlags::TRANSFER_WRITE,
                 image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -862,7 +861,6 @@ impl<'a> ImageBarrier<'a> {
                     );
                 }
 
-
                 let layout = match self.next_layout {
                     ImageLayout::General if *next_access as u32 == AccessType::Present as u32 => {
                         vk::ImageLayout::PRESENT_SRC_KHR
@@ -1065,7 +1063,6 @@ impl<'a> CommandRecorder<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod test {
 
@@ -1090,7 +1087,8 @@ mod test {
                 base_mip_level: 0,
                 level_count: 1,
             },
-        }.to_vk();
+        }
+        .to_vk();
         assert_eq!(src, vk::PipelineStageFlags::TOP_OF_PIPE);
         assert_eq!(dst, vk::PipelineStageFlags::TRANSFER);
         assert_eq!(barrier.src_access_mask, vk::AccessFlags::NONE);
