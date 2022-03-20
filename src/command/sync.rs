@@ -216,7 +216,7 @@ pub enum AccessType {
     HostWrite,
 
     /// Written as an acceleration structure during a build.
-    /// Requires VK_KHR_ray_tracing to be enabled.
+    /// Requires VK_KHR_acceleration_structure to be enabled.
     AccelerationStructureBuildWriteKHR,
 
     /// Read or written as a color attachment during rendering
@@ -899,6 +899,7 @@ impl<const BL: usize, const IL: usize> PipelineBarrierConst<BL, IL> {
         memory_barrier: Option<MemoryBarrier>,
         buffer_barriers: &[BufferBarrier; BL],
         image_barriers: &[ImageBarrier; IL],
+        // Only relevant for Fragment Shader, Early Fragment Tests, Late Fragment Tests, and Color Attachment Output stages.
         dependency_flag: vk::DependencyFlags,
     ) -> Self {
         let mut src_stage_mask: u32 = vk::PipelineStageFlags::TOP_OF_PIPE.as_raw();
@@ -962,6 +963,7 @@ impl PipelineBarrier {
         memory_barrier: Option<MemoryBarrier>,
         buffer_barriers: &[BufferBarrier],
         image_barriers: &[ImageBarrier],
+        // Only relevant for Fragment Shader, Early Fragment Tests, Late Fragment Tests, and Color Attachment Output stages.
         dependency_flag: vk::DependencyFlags,
     ) -> Self {
         let mut src_stage_mask = vk::PipelineStageFlags::TOP_OF_PIPE;

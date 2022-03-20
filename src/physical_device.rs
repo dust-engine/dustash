@@ -97,6 +97,8 @@ pub struct PhysicalDeviceProperties {
     pub v11: vk::PhysicalDeviceVulkan11Properties,
     pub v12: vk::PhysicalDeviceVulkan12Properties,
     pub v13: vk::PhysicalDeviceVulkan13Properties,
+    pub acceleration_structure: vk::PhysicalDeviceAccelerationStructurePropertiesKHR,
+    pub ray_tracing: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
 }
 impl !Unpin for PhysicalDeviceProperties {}
 unsafe impl Send for PhysicalDeviceProperties {}
@@ -111,11 +113,14 @@ impl PhysicalDeviceProperties {
             v11: vk::PhysicalDeviceVulkan11Properties::default(),
             v12: vk::PhysicalDeviceVulkan12Properties::default(),
             v13: vk::PhysicalDeviceVulkan13Properties::default(),
+            acceleration_structure: vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default(),
+            ray_tracing: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default(),
         });
         this.inner.p_next = &mut this.v11 as *mut _ as *mut c_void;
         this.v11.p_next = &mut this.v12 as *mut _ as *mut c_void;
         this.v12.p_next = &mut this.v13 as *mut _ as *mut c_void;
-        this.v13.p_next = std::ptr::null_mut();
+        this.v13.p_next = &mut this.acceleration_structure as *mut _ as *mut c_void;
+        this.acceleration_structure.p_next = &mut this.ray_tracing as *mut _ as *mut c_void;
         unsafe {
             instance.get_physical_device_properties2(physical_device, &mut this.inner);
         }
@@ -139,7 +144,8 @@ pub struct PhysicalDeviceFeatures {
     pub v11: vk::PhysicalDeviceVulkan11Features,
     pub v12: vk::PhysicalDeviceVulkan12Features,
     pub v13: vk::PhysicalDeviceVulkan13Features,
-    pub buffer_device_address: vk::PhysicalDeviceBufferDeviceAddressFeatures,
+    pub acceleration_structure: vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+    pub ray_tracing: vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
 }
 impl !Unpin for PhysicalDeviceFeatures {}
 unsafe impl Send for PhysicalDeviceFeatures {}
@@ -154,12 +160,14 @@ impl PhysicalDeviceFeatures {
             v11: vk::PhysicalDeviceVulkan11Features::default(),
             v12: vk::PhysicalDeviceVulkan12Features::default(),
             v13: vk::PhysicalDeviceVulkan13Features::default(),
-            buffer_device_address: vk::PhysicalDeviceBufferDeviceAddressFeatures::default(),
+            acceleration_structure: vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default(),
+            ray_tracing: vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default(),
         });
         this.inner.p_next = &mut this.v11 as *mut _ as *mut c_void;
         this.v11.p_next = &mut this.v12 as *mut _ as *mut c_void;
         this.v12.p_next = &mut this.v13 as *mut _ as *mut c_void;
-        this.v13.p_next = &mut this.buffer_device_address as *mut _ as *mut c_void;
+        this.v13.p_next = &mut this.acceleration_structure as *mut _ as *mut c_void;
+        this.acceleration_structure.p_next = &mut this.ray_tracing as *mut _ as *mut c_void;
         unsafe {
             instance.get_physical_device_features2(physical_device, &mut this.inner);
         }

@@ -5,6 +5,8 @@
 #![feature(maybe_uninit_uninit_array)]
 #![feature(const_for)]
 #![feature(const_option_ext)]
+#![feature(alloc_layout_extra)]
+#![feature(int_roundings)]
 
 use ash::{prelude::VkResult, vk};
 use std::{ops::Deref, sync::Arc};

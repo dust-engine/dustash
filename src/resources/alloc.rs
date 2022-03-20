@@ -1,11 +1,15 @@
 use ash::vk;
 use std::{
     mem::MaybeUninit,
+    ops::{Deref, DerefMut},
     ptr::NonNull,
     sync::{Arc, RwLock},
 };
 
-use crate::Device;
+use crate::{
+    command::{recorder::CommandRecorder, sync::MemoryBarrier},
+    Device,
+};
 
 use super::buffer::HasBuffer;
 
@@ -60,7 +64,7 @@ impl Allocator {
             buffer_device_address: device
                 .physical_device()
                 .features()
-                .buffer_device_address
+                .v12
                 .buffer_device_address
                 != 0,
         };
@@ -138,14 +142,31 @@ impl Allocator {
     }
 }
 pub struct MemoryBlock(gpu_alloc::MemoryBlock<vk::DeviceMemory>);
+impl Deref for MemoryBlock {
+    type Target = gpu_alloc::MemoryBlock<vk::DeviceMemory>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for MemoryBlock {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl MemoryBlock {
+    /// Writes into host-visible memory
     pub unsafe fn write_bytes(
         &mut self,
         device: &ash::Device,
         offset: u64,
         data: &[u8],
     ) -> Result<(), gpu_alloc::MapError> {
+        assert!(self
+            .0
+            .props()
+            .intersects(gpu_alloc::MemoryPropertyFlags::HOST_VISIBLE));
         self.0
             .write_bytes(gpu_alloc_ash::AshMemoryDevice::wrap(device), offset, data)
     }
@@ -189,6 +210,18 @@ pub struct BufferRequest<'a> {
     pub memory_usage: gpu_alloc::UsageFlags,
     pub sharing_mode: vk::SharingMode,
     pub queue_families: &'a [u32],
+}
+impl<'a> Default for BufferRequest<'a> {
+    fn default() -> Self {
+        Self {
+            size: 0,
+            alignment: 0,
+            usage: vk::BufferUsageFlags::empty(),
+            memory_usage: gpu_alloc::UsageFlags::empty(),
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            queue_families: &[],
+        }
+    }
 }
 
 pub struct MemBuffer {
@@ -236,9 +269,9 @@ impl MemBuffer {
     }
     */
 
-    pub fn get_device_address(&self, device: &ash::Device) -> vk::DeviceAddress {
+    pub fn get_device_address(&self) -> vk::DeviceAddress {
         unsafe {
-            device.get_buffer_device_address(
+            self.allocator.device.get_buffer_device_address(
                 &vk::BufferDeviceAddressInfo::builder()
                     .buffer(self.buffer)
                     .build(),
@@ -251,6 +284,18 @@ impl MemBuffer {
                 .assume_init_mut()
                 .write_bytes(&self.allocator.device, offset, data)
                 .unwrap();
+        }
+    }
+    pub fn map_scoped(&mut self, offset: u64, size: usize, f: impl FnOnce(&mut [u8])) {
+        unsafe {
+            let ptr = self
+                .memory
+                .assume_init_mut()
+                .map(&self.allocator.device, offset, size)
+                .unwrap();
+            let slice = std::slice::from_raw_parts_mut(ptr.as_ptr(), size);
+            f(slice);
+            self.memory.assume_init_mut().unmap(&self.allocator.device);
         }
     }
 }
