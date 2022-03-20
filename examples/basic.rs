@@ -25,7 +25,7 @@ fn main() {
         vk::api_version_variant(version)
     );
 
-    let mut instance = dustash::Instance::create(
+    let instance = dustash::Instance::create(
         entry.clone(),
         &vk::InstanceCreateInfo::builder()
             .application_info(

@@ -6,10 +6,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{
-    command::{recorder::CommandRecorder, sync::MemoryBarrier},
-    Device,
-};
+use crate::Device;
 
 use super::buffer::HasBuffer;
 
