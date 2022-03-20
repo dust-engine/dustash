@@ -7,6 +7,7 @@
 #![feature(const_option_ext)]
 #![feature(alloc_layout_extra)]
 #![feature(int_roundings)]
+#![feature(core_ffi_c)]
 
 use ash::{prelude::VkResult, vk};
 use std::{ops::Deref, sync::Arc};

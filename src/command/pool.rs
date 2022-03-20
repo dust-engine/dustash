@@ -36,7 +36,7 @@ impl CommandPool {
     pub fn queue_family_index(&self) -> u32 {
         self.queue_family_index
     }
-    pub fn allocate_one(self: Arc<CommandPool>) -> VkResult<CommandBuffer> {
+    pub fn allocate_one(self: &Arc<CommandPool>) -> VkResult<CommandBuffer> {
         // Safety: Host Syncronization rule for vkAllocateCommandBuffers:
         // - Host access to pAllocateInfo->commandPool must be externally synchronized.
         // self.pool is protected behind a mutex.
@@ -54,9 +54,12 @@ impl CommandPool {
             )
         };
         drop(pool);
-        result.result_with_success(CommandBuffer { pool: self, buffer })
+        result.result_with_success(CommandBuffer {
+            pool: self.clone(),
+            buffer,
+        })
     }
-    pub fn allocate<const N: usize>(self: Arc<CommandPool>) -> VkResult<[CommandBuffer; N]> {
+    pub fn allocate<const N: usize>(self: &Arc<CommandPool>) -> VkResult<[CommandBuffer; N]> {
         // Safety: Host Syncronization rule for vkAllocateCommandBuffers:
         // - Host access to pAllocateInfo->commandPool must be externally synchronized.
         // self.pool is protected behind a mutex.
@@ -79,7 +82,7 @@ impl CommandPool {
             buffer,
         }))
     }
-    pub fn allocate_n(self: Arc<CommandPool>, n: u32) -> VkResult<Vec<CommandBuffer>> {
+    pub fn allocate_n(self: &Arc<CommandPool>, n: u32) -> VkResult<Vec<CommandBuffer>> {
         // Safety: Host Syncronization rule for vkAllocateCommandBuffers:
         // - Host access to pAllocateInfo->commandPool must be externally synchronized.
         // self.pool is protected behind a mutex.

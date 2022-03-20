@@ -3,7 +3,7 @@ use crate::queue;
 use super::{Device, Instance};
 use ash::{prelude::VkResult, vk};
 use std::{
-    ffi::{c_void, CStr},
+    ffi::{c_char, c_void, CStr},
     ops::{Deref, DerefMut},
     sync::Arc,
 };
@@ -53,8 +53,8 @@ impl PhysicalDevice {
     }
     pub fn create_device(
         self,
-        enabled_layers: &[&CStr],
-        enabled_extensions: &[&CStr],
+        enabled_layers: &[*const c_char],
+        enabled_extensions: &[*const c_char],
         enabled_features: &vk::PhysicalDeviceFeatures2,
     ) -> VkResult<(Arc<Device>, crate::queue::Queues)> {
         let queue_create_info = queue::QueuesCreateInfo::find(&self);
@@ -64,10 +64,10 @@ impl PhysicalDevice {
             p_queue_create_infos: queue_create_info.create_infos.as_ptr(),
 
             enabled_layer_count: enabled_layers.len() as u32,
-            pp_enabled_layer_names: enabled_layers.as_ptr() as *const *const i8,
+            pp_enabled_layer_names: enabled_layers.as_ptr(),
 
             enabled_extension_count: enabled_extensions.len() as u32,
-            pp_enabled_extension_names: enabled_extensions.as_ptr() as *const *const i8,
+            pp_enabled_extension_names: enabled_extensions.as_ptr(),
 
             p_enabled_features: std::ptr::null(),
             ..Default::default()
