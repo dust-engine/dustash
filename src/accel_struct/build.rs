@@ -108,7 +108,7 @@ impl AccelerationStructureBuilder {
             flags: tlas_flags,
             num_primitives: instances.len() as u64,
             geometries_num_primitives: vec![instances.len() as u32],
-            ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+            ty: super::AccelerationStructureType::TopLevel,
         };
         let primitive_datasize =
             std::mem::size_of_val(&instances as &[vk::AccelerationStructureInstanceKHR]);
@@ -151,10 +151,12 @@ impl AccelerationStructureBuilder {
             .builds
             .iter()
             .fold((0_u64, 0_u64), |(tlas_total, blas_total), build| {
-                if build.accel_struct.ty == vk::AccelerationStructureTypeKHR::TOP_LEVEL {
-                    (tlas_total + build.build_size.build_scratch_size, blas_total)
-                } else {
-                    (tlas_total, blas_total + build.build_size.build_scratch_size)
+                use super::AccelerationStructureType::*;
+                match build.accel_struct.ty {
+                    TopLevel => (tlas_total + build.build_size.build_scratch_size, blas_total),
+                    BottomLevelAABBs | BottomLevelTriangles => {
+                        (tlas_total, blas_total + build.build_size.build_scratch_size)
+                    }
                 }
             });
         let scratch_buffer_total = scratch_buffer_blas_total.max(scratch_buffer_tlas_total);
@@ -286,19 +288,19 @@ impl AccelerationStructureBuilder {
                     }
                 };
                 let info = vk::AccelerationStructureBuildGeometryInfoKHR {
-                    ty: as_build.accel_struct.ty,
+                    ty: as_build.accel_struct.ty.into(),
                     flags: as_build.accel_struct.flags,
                     mode: vk::BuildAccelerationStructureModeKHR::BUILD,
                     dst_acceleration_structure: as_build.accel_struct.raw,
                     geometry_count: geometry_range.len() as u32,
                     p_geometries: unsafe { geometries.as_ptr().add(geometry_range.start) },
                     scratch_data: {
-                        let current_scratch_address = if as_build.accel_struct.ty
-                            == vk::AccelerationStructureTypeKHR::TOP_LEVEL
-                        {
-                            &mut current_tlas_scratch_buffer_device_address
-                        } else {
-                            &mut current_blas_scratch_buffer_device_address
+                        use super::AccelerationStructureType::*;
+                        let current_scratch_address = match as_build.accel_struct.ty {
+                            TopLevel => &mut current_tlas_scratch_buffer_device_address,
+                            BottomLevelAABBs | BottomLevelTriangles => {
+                                &mut current_blas_scratch_buffer_device_address
+                            }
                         };
                         let d = vk::DeviceOrHostAddressKHR {
                             device_address: *current_scratch_address,
@@ -321,10 +323,10 @@ impl AccelerationStructureBuilder {
             self.builds
                 .iter()
                 .fold((0_u32, 0_u32), |(tlas_total, blas_total), build| {
-                    if build.accel_struct.ty == vk::AccelerationStructureTypeKHR::TOP_LEVEL {
-                        (tlas_total + 1, blas_total)
-                    } else {
-                        (tlas_total, blas_total + 1)
+                    use super::AccelerationStructureType::*;
+                    match build.accel_struct.ty {
+                        TopLevel => (tlas_total + 1, blas_total),
+                        BottomLevelAABBs | BottomLevelTriangles => (tlas_total, blas_total + 1),
                     }
                 });
         unsafe {
@@ -588,7 +590,7 @@ impl AabbBlasBuilder {
                 flags: self.flags,
                 num_primitives: self.num_primitives,
                 geometries_num_primitives: self.geometry_primitive_counts,
-                ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+                ty: super::AccelerationStructureType::BottomLevelAABBs,
             };
             AccelerationStructureBuild {
                 accel_struct,

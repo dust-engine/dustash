@@ -29,6 +29,36 @@ impl Deref for AccelerationStructureLoader {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum AccelerationStructureType {
+    TopLevel,
+    BottomLevelAABBs,
+    BottomLevelTriangles,
+}
+
+impl Into<vk::AccelerationStructureTypeKHR> for AccelerationStructureType {
+    fn into(self) -> vk::AccelerationStructureTypeKHR {
+        use AccelerationStructureType::*;
+        match self {
+            TopLevel => vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+            BottomLevelAABBs | BottomLevelTriangles => {
+                vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
+            }
+        }
+    }
+}
+
+impl Into<vk::GeometryTypeKHR> for AccelerationStructureType {
+    fn into(self) -> vk::GeometryTypeKHR {
+        use AccelerationStructureType::*;
+        match self {
+            TopLevel => vk::GeometryTypeKHR::INSTANCES,
+            BottomLevelAABBs => vk::GeometryTypeKHR::AABBS,
+            BottomLevelTriangles => vk::GeometryTypeKHR::TRIANGLES,
+        }
+    }
+}
+
 // Acceleration structure can be resized and rebuilt
 // Buffer data on CPU should be entirely optional.
 // can update some entries of the AABB buffer without retransfering all datas.
@@ -42,7 +72,7 @@ pub struct AccelerationStructure {
     backing_buffer: ManuallyDrop<MemBuffer>,
     compacted: bool,
 
-    ty: vk::AccelerationStructureTypeKHR,
+    ty: AccelerationStructureType,
     flags: vk::BuildAccelerationStructureFlagsKHR,
     num_primitives: u64,
     geometries_num_primitives: Vec<u32>,
