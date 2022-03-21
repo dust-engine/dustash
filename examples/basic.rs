@@ -52,13 +52,29 @@ fn main() {
         .unwrap()
         .create_device(
             &[],
-            &[khr::Swapchain::name()],
-            &vk::PhysicalDeviceFeatures2::builder().push_next(
-                &mut vk::PhysicalDeviceSynchronization2Features {
+            &[
+                khr::Swapchain::name().as_ptr(),
+                khr::DeferredHostOperations::name().as_ptr(),
+                khr::AccelerationStructure::name().as_ptr(),
+                khr::RayTracingPipeline::name().as_ptr(),
+            ],
+            &vk::PhysicalDeviceFeatures2::builder()
+                .push_next(&mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR {
+                    acceleration_structure: vk::TRUE,
+                    ..Default::default()
+                })
+                .push_next(&mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR {
+                    ray_tracing_pipeline: vk::TRUE,
+                    ..Default::default()
+                })
+                .push_next(&mut vk::PhysicalDeviceVulkan12Features {
+                    buffer_device_address: vk::TRUE,
+                    ..Default::default()
+                })
+                .push_next(&mut vk::PhysicalDeviceVulkan13Features {
                     synchronization2: vk::TRUE,
                     ..Default::default()
-                },
-            ),
+                }),
         )
         .unwrap();
 

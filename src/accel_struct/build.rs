@@ -12,7 +12,7 @@ use crate::{
 
 use ash::vk;
 
-// Builds many BLASs and at most one TLAS in batch
+/// Builds many acceleration structures in batch.
 pub struct AccelerationStructureBuilder {
     loader: Arc<AccelerationStructureLoader>,
     allocator: Arc<Allocator>,
@@ -122,7 +122,9 @@ impl AccelerationStructureBuilder {
             primitive_datasize,
         })
     }
-    // build on the device.
+    /// build on the device.
+    /// Instead of calling VkCmdBuildAccelerationStructure multiple times, it calls VkCmdBuildAccelerationStructure
+    /// in batch mode, once for BLAS and once for TLAS, with a pipeline barrier inbetween.  
     pub fn build(self, command_recorder: &mut CommandRecorder) -> Vec<Arc<AccelerationStructure>> {
         // Calculate the total number of geometries
         let total_num_geometries = self
@@ -363,6 +365,8 @@ impl AccelerationStructureBuilder {
                 );
             }
         }
+
+        // TODO: track the build state of acceleration structures.
 
         // Finally, add the dependency data
         let acceleration_structures = self
