@@ -24,6 +24,7 @@ pub mod resources;
 pub mod surface;
 pub mod swapchain;
 pub use physical_device::*;
+pub mod descriptor;
 mod ray_tracing;
 
 pub struct Instance {
