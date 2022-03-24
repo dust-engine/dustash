@@ -6,14 +6,96 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::Device;
+use crate::{command::recorder::CommandRecorder, Device};
 
 use super::buffer::HasBuffer;
+
+pub enum StagingStrategy {
+    /// There does not exist any DeviceLocal, HostVisible memory.
+    /// e.g. NVIDIA
+    Required,
+
+    /// There is a small DeviceLocal, HostVisible memory pool. Most data should be moved to the device local memory,
+    /// except frequently updated small data.
+    BarAccess,
+
+    /// There is a large DeviceLocal, HostVisible memory pool. All data could do host writes, except
+    SamAccess,
+
+    /// Most data should not be moved, except small, fast but never updated data.
+    Avoid,
+
+    /// Should never use a staging buffer.
+    Never,
+}
+impl StagingStrategy {
+    pub fn from_memory_properties(
+        heaps: &[crate::physical_device::MemoryHeap],
+        types: &[crate::physical_device::MemoryType],
+        device_type: vk::PhysicalDeviceType,
+    ) -> Self {
+        let max_device_local_host_visible_type = types
+            .iter()
+            .filter(|&ty| {
+                ty.property_flags.contains(
+                    vk::MemoryPropertyFlags::DEVICE_LOCAL | vk::MemoryPropertyFlags::HOST_VISIBLE,
+                )
+            })
+            .max_by_key(|&ty| heaps[ty.heap_index as usize].size);
+
+        let max_device_local_only_type = types
+            .iter()
+            .filter(|&ty| {
+                ty.property_flags
+                    .contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                    && !ty
+                        .property_flags
+                        .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+            })
+            .max_by_key(|&ty| heaps[ty.heap_index as usize].size);
+        let max_host_visible_only_type = types
+            .iter()
+            .filter(|&ty| {
+                !ty.property_flags
+                    .contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                    && ty
+                        .property_flags
+                        .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+            })
+            .max_by_key(|&ty| heaps[ty.heap_index as usize].size);
+
+        if device_type == vk::PhysicalDeviceType::INTEGRATED_GPU
+            || device_type == vk::PhysicalDeviceType::CPU
+        {
+            // Integrated GPU.
+            if max_device_local_only_type.is_some() {
+                StagingStrategy::Avoid
+            } else {
+                StagingStrategy::Never
+            }
+        } else {
+            if let Some(max_device_local_host_visible) = max_device_local_host_visible_type {
+                if heaps[max_device_local_host_visible.heap_index as usize].size < 512 * 1024 * 1024
+                {
+                    // Small device local host visible.
+                    StagingStrategy::BarAccess
+                } else {
+                    // Large device local host visible.
+                    StagingStrategy::SamAccess
+                }
+            } else {
+                // No device local host visible buffer.
+                StagingStrategy::Required
+            }
+        }
+    }
+}
 
 type GpuAllocator = gpu_alloc::GpuAllocator<vk::DeviceMemory>;
 pub struct Allocator {
     allocator: RwLock<GpuAllocator>,
     device: Arc<Device>,
+    staging_strategy: StagingStrategy,
 }
 impl Allocator {
     pub fn new(device: Arc<Device>) -> Self {
@@ -22,6 +104,11 @@ impl Allocator {
         use std::borrow::Cow;
 
         let (heaps, types) = device.physical_device().get_memory_properties();
+        let strategy = StagingStrategy::from_memory_properties(
+            &heaps,
+            &types,
+            device.physical_device().properties().device_type,
+        );
 
         let config = Config::i_am_prototyping();
 
@@ -70,7 +157,12 @@ impl Allocator {
         Self {
             allocator: RwLock::new(allocator),
             device: device.clone(),
+            staging_strategy: strategy,
         }
+    }
+
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 
     pub fn allocate_memory(
@@ -137,6 +229,48 @@ impl Allocator {
             })
         }
     }
+
+    // Returns: MainBuffer, StagingBuffer
+    pub fn allocate_buffer_with_data(
+        self: &Arc<Self>,
+        mut request: BufferRequest,
+        f: impl FnOnce(&mut [u8]),
+        command_recorder: &mut CommandRecorder,
+    ) -> Result<Arc<MemBuffer>, gpu_alloc::AllocationError> {
+        let should_staging = match self.staging_strategy {
+            StagingStrategy::Never | StagingStrategy::Avoid => false,
+            _ => true,
+        };
+        if should_staging {
+            request.usage |= vk::BufferUsageFlags::TRANSFER_DST;
+        }
+        let mut target_buf = self.allocate_buffer(request.clone())?;
+        if !should_staging {
+            target_buf.map_scoped(0, request.size as usize, f);
+            return Ok(Arc::new(target_buf));
+        }
+
+        let mut staging_buf = self.allocate_buffer(BufferRequest {
+            size: request.size,
+            alignment: request.alignment,
+            usage: vk::BufferUsageFlags::TRANSFER_SRC,
+            memory_usage: gpu_alloc::UsageFlags::UPLOAD | gpu_alloc::UsageFlags::TRANSIENT,
+            ..Default::default()
+        })?;
+        staging_buf.map_scoped(0, request.size as usize, f);
+
+        let target_buf = Arc::new(target_buf);
+        command_recorder.copy_buffer(
+            staging_buf,
+            target_buf.clone(),
+            &[vk::BufferCopy {
+                src_offset: 0,
+                dst_offset: 0,
+                size: request.size,
+            }],
+        );
+        Ok(target_buf)
+    }
 }
 pub struct MemoryBlock(gpu_alloc::MemoryBlock<vk::DeviceMemory>);
 impl Deref for MemoryBlock {
@@ -198,6 +332,7 @@ impl MemoryBlock {
     }
 }
 
+#[derive(Clone)]
 pub struct BufferRequest<'a> {
     pub size: u64,
     /// If this value is 0, the memory will be allocated based on the buffer requirements.
@@ -265,6 +400,14 @@ impl MemBuffer {
         }
     }
     */
+
+    pub fn memory(&self) -> &MemoryBlock {
+        unsafe { self.memory.assume_init_ref() }
+    }
+
+    pub fn memory_mut(&mut self) -> &mut MemoryBlock {
+        unsafe { self.memory.assume_init_mut() }
+    }
 
     pub fn get_device_address(&self) -> vk::DeviceAddress {
         unsafe {

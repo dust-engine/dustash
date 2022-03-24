@@ -25,7 +25,7 @@ pub mod surface;
 pub mod swapchain;
 pub use physical_device::*;
 pub mod descriptor;
-mod ray_tracing;
+pub mod ray_tracing;
 
 pub struct Instance {
     entry: Arc<ash::Entry>,
