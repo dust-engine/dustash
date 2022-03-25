@@ -45,6 +45,7 @@ pub struct RayTracingPipeline {
     pub(super) loader: Arc<RayTracingLoader>,
     pub(super) pipeline: vk::Pipeline,
     pub(super) num_miss: u32,
+    pub(super) num_callable: u32,
     pub(super) num_hitgroups: u32,
 }
 pub struct RayTracingPipelineLayout<'a> {
@@ -60,13 +61,19 @@ impl RayTracingPipeline {
         let total_num_stages = sbt_layouts
             .iter()
             .map(|layout| {
-                layout.sbt_layout.miss_shaders.len() + layout.sbt_layout.hitgroup_shaders.len()
+                layout.sbt_layout.miss_shaders.len()
+                    + layout.sbt_layout.hitgroup_shaders.len()
+                    + layout.sbt_layout.callable_shaders.len()
             })
             .sum::<usize>()
             + sbt_layouts.len();
         let total_num_groups = sbt_layouts
             .iter()
-            .map(|layout| layout.sbt_layout.miss_shaders.len() + layout.sbt_layout.hitgroups.len())
+            .map(|layout| {
+                layout.sbt_layout.miss_shaders.len()
+                    + layout.sbt_layout.hitgroups.len()
+                    + layout.sbt_layout.callable_shaders.len()
+            })
             .sum::<usize>()
             + sbt_layouts.len();
 
@@ -114,6 +121,13 @@ impl RayTracingPipeline {
                         &default_specialization_info,
                     )
                 }))
+                .chain(layout.sbt_layout.callable_shaders.iter().map(|&module| {
+                    create_stage(
+                        module,
+                        vk::ShaderStageFlags::CALLABLE_KHR,
+                        &default_specialization_info,
+                    )
+                }))
                 .chain(
                     layout
                         .sbt_layout
@@ -127,6 +141,7 @@ impl RayTracingPipeline {
                     ..stages.len()
                         + 1
                         + layout.sbt_layout.miss_shaders.len()
+                        + layout.sbt_layout.callable_shaders.len()
                         + layout.sbt_layout.hitgroup_shaders.len();
                 stages.extend(sbt_stages);
 
@@ -139,17 +154,28 @@ impl RayTracingPipeline {
                         .closest_hit_shader(vk::SHADER_UNUSED_KHR)
                         .build(),
                 )
-                .chain((1..=layout.sbt_layout.miss_shaders.len()).map(|i| {
+                .chain((0..layout.sbt_layout.miss_shaders.len()).map(|i| {
                     vk::RayTracingShaderGroupCreateInfoKHR::builder() // Miss Shader
                         .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                        .general_shader(i as u32)
+                        .general_shader(i as u32 + 1)
+                        .intersection_shader(vk::SHADER_UNUSED_KHR)
+                        .any_hit_shader(vk::SHADER_UNUSED_KHR)
+                        .closest_hit_shader(vk::SHADER_UNUSED_KHR)
+                        .build()
+                }))
+                .chain((0..=layout.sbt_layout.callable_shaders.len()).map(|i| {
+                    vk::RayTracingShaderGroupCreateInfoKHR::builder() // Callable Shader
+                        .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                        .general_shader(i as u32 + 1 + layout.sbt_layout.miss_shaders.len() as u32)
                         .intersection_shader(vk::SHADER_UNUSED_KHR)
                         .any_hit_shader(vk::SHADER_UNUSED_KHR)
                         .closest_hit_shader(vk::SHADER_UNUSED_KHR)
                         .build()
                 }))
                 .chain(layout.sbt_layout.hitgroups.iter().map(|group| {
-                    let base = layout.sbt_layout.miss_shaders.len() as u32 + 1;
+                    let base = layout.sbt_layout.miss_shaders.len() as u32
+                        + layout.sbt_layout.callable_shaders.len() as u32
+                        + 1;
                     let ty = match group.ty {
                         HitGroupType::Procedural => {
                             vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP
@@ -182,6 +208,7 @@ impl RayTracingPipeline {
                     ..stages.len()
                         + 1
                         + layout.sbt_layout.miss_shaders.len()
+                        + layout.sbt_layout.callable_shaders.len()
                         + layout.sbt_layout.hitgroups.len();
                 groups.extend(sbt_groups);
 
@@ -211,6 +238,7 @@ impl RayTracingPipeline {
                 pipeline,
                 num_hitgroups: layout.sbt_layout.hitgroups.len() as u32,
                 num_miss: layout.sbt_layout.miss_shaders.len() as u32,
+                num_callable: layout.sbt_layout.callable_shaders.len() as u32,
             })
             .collect::<Vec<_>>();
         Ok(pipelines)

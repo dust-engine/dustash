@@ -7,7 +7,8 @@ use ash::{prelude::VkResult, vk};
 
 pub struct SbtLayout {
     pub(super) raygen_shader: vk::ShaderModule,
-    pub(super) miss_shaders: Vec<vk::ShaderModule>,
+    pub(super) miss_shaders: Box<[vk::ShaderModule]>,
+    pub(super) callable_shaders: Box<[vk::ShaderModule]>,
 
     /// A list of non-repeating vk::ShaderModule, alongside their flags
     pub(super) hitgroup_shaders: Vec<(vk::ShaderStageFlags, vk::ShaderModule)>,
@@ -37,7 +38,8 @@ pub(super) struct HitGroupEntry {
 impl SbtLayout {
     pub fn new<'a>(
         raygen_shader: vk::ShaderModule,
-        miss_shaders: Vec<vk::ShaderModule>,
+        miss_shaders: Box<[vk::ShaderModule]>,
+        callable_shaders: Box<[vk::ShaderModule]>,
         hitgroups: impl ExactSizeIterator<Item = &'a HitGroup>,
     ) -> Self {
         let mut hitgroup_shaders: Vec<(vk::ShaderStageFlags, vk::ShaderModule)> =
@@ -74,6 +76,7 @@ impl SbtLayout {
         Self {
             raygen_shader,
             miss_shaders,
+            callable_shaders,
             hitgroup_shaders,
             hitgroups: hitgroup_entries,
         }
@@ -85,6 +88,7 @@ pub struct SbtHandles {
     handle_layout: Layout,
     group_base_alignment: u32,
     num_miss: u32,
+    num_callable: u32,
 }
 impl SbtHandles {
     fn rgen(&self) -> &[u8] {
@@ -95,8 +99,14 @@ impl SbtHandles {
         let end = start + self.handle_layout.size();
         &self.data[start..end]
     }
+    fn callable(&self, index: usize) -> &[u8] {
+        let start = self.handle_layout.size() * (index + 1 + self.num_miss as usize);
+        let end = start + self.handle_layout.size();
+        &self.data[start..end]
+    }
     fn hitgroup(&self, index: usize) -> &[u8] {
-        let start = self.handle_layout.size() * (index + self.num_miss as usize + 1);
+        let start = self.handle_layout.size()
+            * (index + self.num_miss as usize + self.num_callable as usize + 1);
         let end = start + self.handle_layout.size();
         &self.data[start..end]
     }
@@ -115,10 +125,11 @@ impl SbtHandles {
     ///     uint32_t material_id;
     /// };
     /// ```
-    pub fn compile<'a, RGEN, RMISS, RHIT, RhitIter>(
+    pub fn compile<'a, RGEN, RMISS, RHIT, RCALLABLE, RhitIter>(
         &'a self,
         rgen_data: RGEN,
         rmiss_data: impl IntoIterator<Item = RMISS>,
+        callable_data: impl IntoIterator<Item = RCALLABLE>,
         rhit_data: impl IntoIterator<Item = (usize, RHIT), IntoIter = RhitIter>, // Iterator to HitGroup, HitGroup Parameter
         allocator: impl FnOnce(Layout) -> MemBuffer,
     ) -> Sbt
@@ -126,6 +137,7 @@ impl SbtHandles {
         RGEN: Copy,
         RMISS: Copy,
         RHIT: Copy,
+        RCALLABLE: Copy,
         RhitIter: ExactSizeIterator<Item = (usize, RHIT)>,
     {
         let rhit_data: RhitIter = rhit_data.into_iter();
@@ -144,6 +156,17 @@ impl SbtHandles {
             .0
             .align_to(self.group_base_alignment as usize)
             .unwrap();
+        let callable_layout_one = self
+            .handle_layout
+            .extend(Layout::new::<RCALLABLE>())
+            .unwrap()
+            .0;
+        let callable_layout = callable_layout_one
+            .repeat(self.num_callable as usize)
+            .unwrap()
+            .0
+            .align_to(self.group_base_alignment as usize)
+            .unwrap();
         let hitgroup_layout_one = self.handle_layout.extend(Layout::new::<RHIT>()).unwrap().0;
         let hitgroup_layout = hitgroup_layout_one
             .repeat(rhit_data.len())
@@ -153,6 +176,9 @@ impl SbtHandles {
             .unwrap();
         let sbt_layout = raygen_layout
             .extend(raymiss_layout)
+            .unwrap()
+            .0
+            .extend(callable_layout)
             .unwrap()
             .0
             .extend(hitgroup_layout)
@@ -203,9 +229,38 @@ impl SbtHandles {
                 }
             }
             {
+                // Copy rmiss records
+                let front = raygen_layout
+                    .extend(raymiss_layout)
+                    .unwrap()
+                    .0
+                    .pad_to_align()
+                    .size();
+                let back = front + callable_layout.size();
+                let callable_slice = &mut target_slice[front..back];
+                let mut callable_data = callable_data.into_iter();
+                for i in 0..self.num_callable as usize {
+                    let front = callable_layout_one.pad_to_align().size() * i;
+                    let back = callable_layout_one.size() + front;
+                    let current_callable_slice = &mut callable_slice[front..back];
+                    let current_callable_data = callable_data
+                        .next()
+                        .expect("Not enough callable data provided");
+                    set_sbt_item(
+                        current_callable_slice,
+                        current_callable_data,
+                        self.callable(i),
+                        &self.handle_layout,
+                    );
+                }
+            }
+            {
                 // Copy hitgroup records
                 let front = raygen_layout
                     .extend(raymiss_layout)
+                    .unwrap()
+                    .0
+                    .extend(callable_layout)
                     .unwrap()
                     .0
                     .pad_to_align()
@@ -240,17 +295,20 @@ impl SbtHandles {
                 stride: raymiss_layout_one.pad_to_align().size() as u64,
                 size: raymiss_layout.pad_to_align().size() as u64,
             },
-            hit_sbt: vk::StridedDeviceAddressRegionKHR {
+            callable_sbt: vk::StridedDeviceAddressRegionKHR {
                 device_address: base_device_address
                     + raygen_layout.pad_to_align().size() as u64
                     + raymiss_layout.pad_to_align().size() as u64,
+                stride: callable_layout_one.pad_to_align().size() as u64,
+                size: callable_layout_one.pad_to_align().size() as u64,
+            },
+            hit_sbt: vk::StridedDeviceAddressRegionKHR {
+                device_address: base_device_address
+                    + raygen_layout.pad_to_align().size() as u64
+                    + raymiss_layout.pad_to_align().size() as u64
+                    + callable_layout.pad_to_align().size() as u64,
                 stride: hitgroup_layout_one.pad_to_align().size() as u64,
                 size: hitgroup_layout.pad_to_align().size() as u64,
-            },
-            callable_sbt: vk::StridedDeviceAddressRegionKHR {
-                device_address: 0,
-                stride: 0,
-                size: 0,
             },
         }
     }
@@ -286,6 +344,7 @@ impl RayTracingPipeline {
             .unwrap(),
             group_base_alignment: rtx_properties.shader_group_base_alignment,
             num_miss: self.num_miss,
+            num_callable: self.num_callable,
         })
     }
 }
