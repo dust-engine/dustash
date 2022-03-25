@@ -83,7 +83,7 @@ impl RayTracingPipeline {
             stage: vk::ShaderStageFlags,
             specialization_info: &vk::SpecializationInfo,
         ) -> vk::PipelineShaderStageCreateInfo {
-            const SHADER_ENTRY_NAME_MAIN: &'static std::ffi::CStr =
+            const SHADER_ENTRY_NAME_MAIN: &std::ffi::CStr =
                 unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"main\0") };
             vk::PipelineShaderStageCreateInfo::builder()
                 .flags(vk::PipelineShaderStageCreateFlags::default())

@@ -9,7 +9,7 @@ pub struct DebugUtilsMessenger {
 
 impl DebugUtilsMessenger {
     pub fn new(entry: &ash::Entry, instance: &mut ash::Instance) -> VkResult<Self> {
-        let debug_utils = ext::DebugUtils::new(entry, &instance);
+        let debug_utils = ext::DebugUtils::new(entry, instance);
 
         let messenger = unsafe {
             // Safety:

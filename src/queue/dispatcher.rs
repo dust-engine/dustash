@@ -79,7 +79,7 @@ impl QueueDispatcher {
                     }
                     QueueCommand::Fence(fence) => {
                         // Submit existing fences
-                        let fenced_submissions = std::mem::replace(&mut submissions, Vec::new());
+                        let fenced_submissions = std::mem::take(&mut submissions);
                         unsafe {
                             self.queue_submit(
                                 fenced_submissions,
@@ -97,7 +97,7 @@ impl QueueDispatcher {
             }
         }
         // If there are still some unfenced submissions
-        if submissions.len() > 0 {
+        if !submissions.is_empty() {
             let fence = Fence::new(self.queue.device.clone(), false)?;
             let fence = Arc::new(fence);
             unsafe {

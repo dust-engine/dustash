@@ -240,7 +240,7 @@ impl AccelerationStructureBuilder {
                             geometries.len()..(geometries.len() + blas_geometries.len());
                         // Insert geometries
                         geometries.extend(
-                            aabbs_to_geometry_infos(&blas_geometries).into_iter().map(
+                            aabbs_to_geometry_infos(blas_geometries).into_iter().map(
                                 |mut geometry_info: vk::AccelerationStructureGeometryKHR| unsafe {
                                     let data_len = geometry_info.geometry.aabbs.data.device_address;
                                     geometry_info.geometry.aabbs.data.device_address =
@@ -272,7 +272,7 @@ impl AccelerationStructureBuilder {
                                         device_address: {
                                             let d = current_primitives_buffer_device_address;
                                             let slice: &[vk::AccelerationStructureInstanceKHR] =
-                                                &instances;
+                                                instances;
                                             current_primitives_buffer_device_address +=
                                                 std::mem::size_of_val(slice) as u64;
                                             d
@@ -289,7 +289,7 @@ impl AccelerationStructureBuilder {
                         geometry_range
                     }
                 };
-                let info = vk::AccelerationStructureBuildGeometryInfoKHR {
+                vk::AccelerationStructureBuildGeometryInfoKHR {
                     ty: as_build.accel_struct.ty.into(),
                     flags: as_build.accel_struct.flags,
                     mode: vk::BuildAccelerationStructureModeKHR::BUILD,
@@ -311,8 +311,7 @@ impl AccelerationStructureBuilder {
                         d
                     },
                     ..Default::default()
-                };
-                info
+                }
             })
             .collect::<Vec<_>>();
         debug_assert_eq!(
@@ -428,7 +427,7 @@ impl AccelerationStructureBuild {
                 })
                 .fold(buf, fold_handler),
             AccelerationStructureBuildType::Tlas { instances, .. } => unsafe {
-                let slice: &[vk::AccelerationStructureInstanceKHR] = &instances;
+                let slice: &[vk::AccelerationStructureInstanceKHR] = instances;
                 let size = std::mem::size_of_val(slice);
                 let slice: &[u8] = std::slice::from_raw_parts(slice.as_ptr() as *const u8, size);
                 fold_handler(buf, slice)
@@ -446,9 +445,9 @@ pub struct AabbBlasBuilder {
     primitive_datasize: usize,
 }
 
-fn aabbs_to_geometry_infos<'a>(
-    geometries: &'a [(Box<[u8]>, usize, vk::GeometryFlagsKHR)],
-) -> impl IntoIterator<Item = vk::AccelerationStructureGeometryKHR> + 'a {
+fn aabbs_to_geometry_infos(
+    geometries: &[(Box<[u8]>, usize, vk::GeometryFlagsKHR)],
+) -> impl IntoIterator<Item = vk::AccelerationStructureGeometryKHR> + '_ {
     geometries.iter().map(
         |(data, stride, flags)| vk::AccelerationStructureGeometryKHR {
             geometry_type: vk::GeometryTypeKHR::AABBS,

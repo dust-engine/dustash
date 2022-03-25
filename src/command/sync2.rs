@@ -12,7 +12,7 @@ struct VkAccessInfo2 {
 }
 
 impl AccessType {
-    const fn to_vk2(&self) -> VkAccessInfo2 {
+    const fn to_vk2(self) -> VkAccessInfo2 {
         match self {
             AccessType::CommandBufferReadNV => VkAccessInfo2 {
                 stage_mask: vk::PipelineStageFlags2::COMMAND_PREPROCESS_NV,
@@ -454,7 +454,7 @@ impl<'a> MemoryBarrier<'a> {
                     barrier.src_access_mask.as_raw() | info.access_mask.as_raw(),
                 );
             }
-            i = i + 1;
+            i += 1;
         }
         i = 0;
         while i < self.next_accesses.len() {
@@ -474,7 +474,7 @@ impl<'a> MemoryBarrier<'a> {
                     barrier.dst_access_mask.as_raw() | info.access_mask.as_raw(),
                 );
             }
-            i = i + 1;
+            i += 1;
         }
         // Ensure that the stage masks are valid if no stages were determined
         barrier.src_stage_mask = vk::PipelineStageFlags2::from_raw(src_stages);
@@ -493,7 +493,7 @@ impl<'a> BufferBarrier<'a> {
     const fn to_vk2(&self) -> vk::BufferMemoryBarrier2 {
         assert!(self.src_queue_family_index != self.dst_queue_family_index, "BufferBarrier should only be used when a queue family ownership transfer is required. Use MemoryBarrier instead.");
         let barrier = self.memory_barrier.to_vk2();
-        let barrier = vk::BufferMemoryBarrier2 {
+        vk::BufferMemoryBarrier2 {
             s_type: vk::StructureType::BUFFER_MEMORY_BARRIER_2,
             p_next: null(),
             src_access_mask: barrier.src_access_mask,
@@ -505,8 +505,7 @@ impl<'a> BufferBarrier<'a> {
             size: self.size,
             src_stage_mask: barrier.src_stage_mask,
             dst_stage_mask: barrier.dst_stage_mask,
-        };
-        barrier
+        }
     }
 }
 
@@ -547,7 +546,7 @@ impl<'a> ImageBarrier<'a> {
                     "Mixed Image Layout"
                 );
                 barrier.old_layout = layout;
-                i = i + 1;
+                i += 1;
             }
         }
 
@@ -579,7 +578,7 @@ impl<'a> ImageBarrier<'a> {
                     "Mixed Image Layout"
                 );
                 barrier.new_layout = layout;
-                i = i + 1;
+                i += 1;
             }
         }
 

@@ -240,7 +240,7 @@ impl AccessType {
     pub const fn is_write(&self) -> bool {
         (*self as u32) > (Self::Present as u32)
     }
-    const fn to_vk(&self) -> VkAccessInfo {
+    const fn to_vk(self) -> VkAccessInfo {
         match self {
             AccessType::CommandBufferReadNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::COMMAND_PREPROCESS_NV,
@@ -743,7 +743,7 @@ impl<'a> MemoryBarrier<'a> {
                     barrier.src_access_mask.as_raw() | info.access_mask.as_raw(),
                 );
             }
-            i = i + 1;
+            i += 1;
         }
         i = 0;
         while i < self.next_accesses.len() {
@@ -764,7 +764,7 @@ impl<'a> MemoryBarrier<'a> {
                     barrier.dst_access_mask.as_raw() | info.access_mask.as_raw(),
                 );
             }
-            i = i + 1;
+            i += 1;
         }
         // Ensure that the stage masks are valid if no stages were determined
         if src_stages.is_empty() {
@@ -843,7 +843,7 @@ impl<'a> ImageBarrier<'a> {
                     "Mixed Image Layout"
                 );
                 barrier.old_layout = layout;
-                i = i + 1;
+                i += 1;
             }
         }
 
@@ -875,7 +875,7 @@ impl<'a> ImageBarrier<'a> {
                     "Mixed Image Layout"
                 );
                 barrier.new_layout = layout;
-                i = i + 1;
+                i += 1;
             }
         }
 

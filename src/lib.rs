@@ -84,7 +84,7 @@ pub struct Device {
 
 impl Device {
     pub fn instance(&self) -> &Arc<Instance> {
-        &self.physical_device.instance()
+        self.physical_device.instance()
     }
     pub fn physical_device(&self) -> &PhysicalDevice {
         &self.physical_device

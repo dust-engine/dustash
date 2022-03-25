@@ -64,6 +64,7 @@ impl StagingStrategy {
                 StagingStrategy::Never
             }
         } else {
+            // Discrete GPU
             if let Some(max_device_local_host_visible) = max_device_local_host_visible_type {
                 if heaps[max_device_local_host_visible.heap_index as usize].size < 512 * 1024 * 1024
                 {
@@ -146,7 +147,7 @@ impl Allocator {
 
         Self {
             allocator: RwLock::new(allocator),
-            device: device.clone(),
+            device,
             staging_strategy: strategy,
         }
     }
@@ -227,10 +228,10 @@ impl Allocator {
         f: impl FnOnce(&mut [u8]),
         command_recorder: &mut CommandRecorder,
     ) -> Result<Arc<MemBuffer>, gpu_alloc::AllocationError> {
-        let should_staging = match self.staging_strategy {
-            StagingStrategy::Never | StagingStrategy::Avoid => false,
-            _ => true,
-        };
+        let should_staging = !matches!(
+            self.staging_strategy,
+            StagingStrategy::Never | StagingStrategy::Avoid
+        );
         if should_staging {
             request.usage |= vk::BufferUsageFlags::TRANSFER_DST;
         }
