@@ -1,8 +1,8 @@
-use std::alloc::Layout;
+use std::{alloc::Layout, sync::Arc};
 
-use crate::resources::alloc::{Allocator, MemBuffer, MemoryBlock};
+use crate::resources::alloc::MemBuffer;
 
-use super::pipeline::RayTracingPipeline;
+use super::pipeline::{RayTracingLoader, RayTracingPipeline};
 use ash::{prelude::VkResult, vk};
 
 pub struct SbtLayout {
@@ -89,8 +89,44 @@ pub struct SbtHandles {
     group_base_alignment: u32,
     num_miss: u32,
     num_callable: u32,
+    num_hitgroup: u32,
 }
 impl SbtHandles {
+    pub fn new(
+        loader: &RayTracingLoader,
+        pipeline: vk::Pipeline,
+        num_miss: u32,
+        num_callable: u32,
+        num_hitgroup: u32,
+    ) -> VkResult<SbtHandles> {
+        let total_num_groups = num_hitgroup + num_miss + num_callable + 1;
+        let rtx_properties = &loader.device().physical_device().properties().ray_tracing;
+        let sbt_handles_host_vec = unsafe {
+            loader
+                .get_ray_tracing_shader_group_handles(
+                    pipeline,
+                    0,
+                    total_num_groups,
+                    // VUID-vkGetRayTracingShaderGroupHandlesKHR-dataSize-02420
+                    // dataSize must be at least VkPhysicalDeviceRayTracingPipelinePropertiesKHR::shaderGroupHandleSize × groupCount
+                    rtx_properties.shader_group_handle_size as usize * total_num_groups as usize,
+                )?
+                .into_boxed_slice()
+        };
+        Ok(SbtHandles {
+            data: sbt_handles_host_vec,
+            handle_layout: Layout::from_size_align(
+                rtx_properties.shader_group_handle_size as usize,
+                rtx_properties.shader_group_handle_alignment as usize,
+            )
+            .unwrap(),
+            group_base_alignment: rtx_properties.shader_group_base_alignment,
+            num_miss,
+            num_callable,
+            num_hitgroup,
+        })
+    }
+
     fn rgen(&self) -> &[u8] {
         &self.data[0..self.handle_layout.size()]
     }
@@ -110,7 +146,18 @@ impl SbtHandles {
         let end = start + self.handle_layout.size();
         &self.data[start..end]
     }
+}
 
+pub struct Sbt {
+    pub(super) pipeline: Arc<RayTracingPipeline>,
+    pub(super) buf: MemBuffer,
+    pub(super) raygen_sbt: vk::StridedDeviceAddressRegionKHR,
+    pub(super) miss_sbt: vk::StridedDeviceAddressRegionKHR,
+    pub(super) hit_sbt: vk::StridedDeviceAddressRegionKHR,
+    pub(super) callable_sbt: vk::StridedDeviceAddressRegionKHR,
+}
+
+impl Sbt {
     /// Compile the SBT data and put them into the allocated buffer.
     ///
     /// # Arguments
@@ -125,8 +172,8 @@ impl SbtHandles {
     ///     uint32_t material_id;
     /// };
     /// ```
-    pub fn compile<'a, RGEN, RMISS, RHIT, RCALLABLE, RhitIter>(
-        &'a self,
+    pub fn new<RGEN, RMISS, RHIT, RCALLABLE, RhitIter>(
+        pipeline: Arc<RayTracingPipeline>,
         rgen_data: RGEN,
         rmiss_data: impl IntoIterator<Item = RMISS>,
         callable_data: impl IntoIterator<Item = RCALLABLE>,
@@ -142,37 +189,49 @@ impl SbtHandles {
     {
         let rhit_data: RhitIter = rhit_data.into_iter();
 
-        let raygen_layout = self
+        let raygen_layout = pipeline
+            .handles
             .handle_layout
             .extend(Layout::new::<RGEN>())
             .unwrap()
             .0
-            .align_to(self.group_base_alignment as usize)
+            .align_to(pipeline.handles.group_base_alignment as usize)
             .unwrap();
-        let raymiss_layout_one = self.handle_layout.extend(Layout::new::<RMISS>()).unwrap().0;
+        let raymiss_layout_one = pipeline
+            .handles
+            .handle_layout
+            .extend(Layout::new::<RMISS>())
+            .unwrap()
+            .0;
         let raymiss_layout = raymiss_layout_one
-            .repeat(self.num_miss as usize)
+            .repeat(pipeline.handles.num_miss as usize)
             .unwrap()
             .0
-            .align_to(self.group_base_alignment as usize)
+            .align_to(pipeline.handles.group_base_alignment as usize)
             .unwrap();
-        let callable_layout_one = self
+        let callable_layout_one = pipeline
+            .handles
             .handle_layout
             .extend(Layout::new::<RCALLABLE>())
             .unwrap()
             .0;
         let callable_layout = callable_layout_one
-            .repeat(self.num_callable as usize)
+            .repeat(pipeline.handles.num_callable as usize)
             .unwrap()
             .0
-            .align_to(self.group_base_alignment as usize)
+            .align_to(pipeline.handles.group_base_alignment as usize)
             .unwrap();
-        let hitgroup_layout_one = self.handle_layout.extend(Layout::new::<RHIT>()).unwrap().0;
+        let hitgroup_layout_one = pipeline
+            .handles
+            .handle_layout
+            .extend(Layout::new::<RHIT>())
+            .unwrap()
+            .0;
         let hitgroup_layout = hitgroup_layout_one
             .repeat(rhit_data.len())
             .unwrap()
             .0
-            .align_to(self.group_base_alignment as usize)
+            .align_to(pipeline.handles.group_base_alignment as usize)
             .unwrap();
         let sbt_layout = raygen_layout
             .extend(raymiss_layout)
@@ -206,7 +265,12 @@ impl SbtHandles {
             {
                 // Copy raygen records
                 let raygen_slice = &mut target_slice[0..raygen_layout.size()];
-                set_sbt_item(raygen_slice, rgen_data, self.rgen(), &self.handle_layout);
+                set_sbt_item(
+                    raygen_slice,
+                    rgen_data,
+                    pipeline.handles.rgen(),
+                    &pipeline.handles.handle_layout,
+                );
             }
             {
                 // Copy rmiss records
@@ -214,7 +278,7 @@ impl SbtHandles {
                 let back = front + raymiss_layout.size();
                 let raymiss_slice = &mut target_slice[front..back];
                 let mut rmiss_data = rmiss_data.into_iter();
-                for i in 0..self.num_miss as usize {
+                for i in 0..pipeline.handles.num_miss as usize {
                     let front = raymiss_layout_one.pad_to_align().size() * i;
                     let back = raymiss_layout_one.size() + front;
                     let current_rmiss_slice = &mut raymiss_slice[front..back];
@@ -223,8 +287,8 @@ impl SbtHandles {
                     set_sbt_item(
                         current_rmiss_slice,
                         current_rmiss_data,
-                        self.rmiss(i),
-                        &self.handle_layout,
+                        pipeline.handles.rmiss(i),
+                        &pipeline.handles.handle_layout,
                     );
                 }
             }
@@ -239,7 +303,7 @@ impl SbtHandles {
                 let back = front + callable_layout.size();
                 let callable_slice = &mut target_slice[front..back];
                 let mut callable_data = callable_data.into_iter();
-                for i in 0..self.num_callable as usize {
+                for i in 0..pipeline.handles.num_callable as usize {
                     let front = callable_layout_one.pad_to_align().size() * i;
                     let back = callable_layout_one.size() + front;
                     let current_callable_slice = &mut callable_slice[front..back];
@@ -249,8 +313,8 @@ impl SbtHandles {
                     set_sbt_item(
                         current_callable_slice,
                         current_callable_data,
-                        self.callable(i),
-                        &self.handle_layout,
+                        pipeline.handles.callable(i),
+                        &pipeline.handles.handle_layout,
                     );
                 }
             }
@@ -274,16 +338,17 @@ impl SbtHandles {
                     set_sbt_item(
                         current_hitgroup_slice,
                         current_hitgroup_data,
-                        self.hitgroup(hitgroup_index),
-                        &self.handle_layout,
+                        pipeline.handles.hitgroup(hitgroup_index),
+                        &pipeline.handles.handle_layout,
                     );
                 }
             }
         });
 
         let base_device_address = target_membuffer.get_device_address();
-        assert!(base_device_address % self.group_base_alignment as u64 == 0);
+        assert!(base_device_address % pipeline.handles.group_base_alignment as u64 == 0);
         Sbt {
+            pipeline,
             buf: target_membuffer,
             raygen_sbt: vk::StridedDeviceAddressRegionKHR {
                 device_address: base_device_address,
@@ -312,47 +377,4 @@ impl SbtHandles {
             },
         }
     }
-}
-
-impl RayTracingPipeline {
-    pub fn create_sbt_handles(&self) -> VkResult<SbtHandles> {
-        let total_num_groups = self.num_hitgroups + self.num_miss + 1;
-        let rtx_properties = &self
-            .loader
-            .device()
-            .physical_device()
-            .properties()
-            .ray_tracing;
-        let sbt_handles_host_vec = unsafe {
-            self.loader
-                .get_ray_tracing_shader_group_handles(
-                    self.pipeline,
-                    0,
-                    total_num_groups,
-                    // VUID-vkGetRayTracingShaderGroupHandlesKHR-dataSize-02420
-                    // dataSize must be at least VkPhysicalDeviceRayTracingPipelinePropertiesKHR::shaderGroupHandleSize × groupCount
-                    rtx_properties.shader_group_handle_size as usize * total_num_groups as usize,
-                )?
-                .into_boxed_slice()
-        };
-        Ok(SbtHandles {
-            data: sbt_handles_host_vec,
-            handle_layout: Layout::from_size_align(
-                rtx_properties.shader_group_handle_size as usize,
-                rtx_properties.shader_group_handle_alignment as usize,
-            )
-            .unwrap(),
-            group_base_alignment: rtx_properties.shader_group_base_alignment,
-            num_miss: self.num_miss,
-            num_callable: self.num_callable,
-        })
-    }
-}
-
-pub struct Sbt {
-    buf: MemBuffer,
-    raygen_sbt: vk::StridedDeviceAddressRegionKHR,
-    miss_sbt: vk::StridedDeviceAddressRegionKHR,
-    hit_sbt: vk::StridedDeviceAddressRegionKHR,
-    callable_sbt: vk::StridedDeviceAddressRegionKHR,
 }

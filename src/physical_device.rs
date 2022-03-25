@@ -3,7 +3,7 @@ use crate::queue;
 use super::{Device, Instance};
 use ash::{prelude::VkResult, vk};
 use std::{
-    ffi::{c_char, c_void, CStr},
+    ffi::{c_char, c_void},
     ops::{Deref, DerefMut},
     sync::Arc,
 };

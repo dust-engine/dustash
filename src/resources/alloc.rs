@@ -53,16 +53,6 @@ impl StagingStrategy {
                         .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
             })
             .max_by_key(|&ty| heaps[ty.heap_index as usize].size);
-        let max_host_visible_only_type = types
-            .iter()
-            .filter(|&ty| {
-                !ty.property_flags
-                    .contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                    && ty
-                        .property_flags
-                        .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
-            })
-            .max_by_key(|&ty| heaps[ty.heap_index as usize].size);
 
         if device_type == vk::PhysicalDeviceType::INTEGRATED_GPU
             || device_type == vk::PhysicalDeviceType::CPU

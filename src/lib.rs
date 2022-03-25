@@ -8,6 +8,7 @@
 #![feature(alloc_layout_extra)]
 #![feature(int_roundings)]
 #![feature(core_ffi_c)]
+#![feature(iterator_try_collect)]
 
 use ash::{prelude::VkResult, vk};
 use std::{ops::Deref, sync::Arc};

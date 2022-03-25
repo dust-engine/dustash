@@ -1,9 +1,7 @@
-use super::sbt::{HitGroupType, SbtLayout};
-use crate::resources::alloc::{Allocator, BufferRequest};
+use super::sbt::{HitGroupType, SbtHandles, SbtLayout};
 use crate::Device;
 use ash::extensions::khr;
 use ash::{prelude::VkResult, vk};
-use std::io::IntoInnerError;
 use std::{ops::Deref, sync::Arc};
 
 pub struct PipelineLayout {
@@ -44,9 +42,7 @@ impl RayTracingLoader {
 pub struct RayTracingPipeline {
     pub(super) loader: Arc<RayTracingLoader>,
     pub(super) pipeline: vk::Pipeline,
-    pub(super) num_miss: u32,
-    pub(super) num_callable: u32,
-    pub(super) num_hitgroups: u32,
+    pub(super) handles: SbtHandles,
 }
 pub struct RayTracingPipelineLayout<'a> {
     pipeline_layout: &'a PipelineLayout,
@@ -233,14 +229,20 @@ impl RayTracingPipeline {
         let pipelines = results
             .into_iter()
             .zip(sbt_layouts.iter())
-            .map(|(pipeline, layout)| RayTracingPipeline {
-                loader: loader.clone(),
-                pipeline,
-                num_hitgroups: layout.sbt_layout.hitgroups.len() as u32,
-                num_miss: layout.sbt_layout.miss_shaders.len() as u32,
-                num_callable: layout.sbt_layout.callable_shaders.len() as u32,
+            .map(|(pipeline, layout)| {
+                Ok(RayTracingPipeline {
+                    loader: loader.clone(),
+                    pipeline,
+                    handles: SbtHandles::new(
+                        &loader,
+                        pipeline,
+                        layout.sbt_layout.miss_shaders.len() as u32,
+                        layout.sbt_layout.callable_shaders.len() as u32,
+                        layout.sbt_layout.hitgroups.len() as u32,
+                    )?,
+                })
             })
-            .collect::<Vec<_>>();
+            .try_collect::<Vec<_>>()?;
         Ok(pipelines)
     }
 }
