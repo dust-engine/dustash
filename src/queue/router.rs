@@ -61,10 +61,8 @@ impl Queues {
         }
     }
 
-    pub fn flush_and_present(
+    pub fn flush(
         &mut self,
-        frames: &mut crate::frames::FrameManager,
-        frame: AcquiredFrame,
     ) -> VkResult<()> {
         // We take ownership of AcquiredFrame here, ensuring that Swapchain Acquire occured before submitting command buffers.
         // Note that acquire and present calls should be interleaved. Always present your existing AcquiredFrame before acquiring the next one.
@@ -72,7 +70,14 @@ impl Queues {
         for dispatcher in self.queues.iter_mut() {
             dispatcher.flush()?;
         }
+        Ok(())
+    }
 
+    pub fn present(
+        &mut self,
+        frames: &mut crate::frames::FrameManager,
+        frame: AcquiredFrame,
+    ) -> VkResult<()> {
         // We perform queue present after all dispatchers are flushed to ensure that queue present happens last.
         let present_queue = self.queues[frame.present_queue_family as usize].queue.queue;
         unsafe { frames.present(present_queue, frame) }
