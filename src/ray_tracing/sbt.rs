@@ -1,17 +1,17 @@
 use std::{alloc::Layout, sync::Arc};
 
-use crate::resources::alloc::MemBuffer;
+use crate::{resources::alloc::MemBuffer, shader::Shader};
 
 use super::pipeline::{RayTracingLoader, RayTracingPipeline};
 use ash::{prelude::VkResult, vk};
 
 pub struct SbtLayout {
-    pub(super) raygen_shader: vk::ShaderModule,
-    pub(super) miss_shaders: Box<[vk::ShaderModule]>,
-    pub(super) callable_shaders: Box<[vk::ShaderModule]>,
+    pub(super) raygen_shader: SpecializedShader,
+    pub(super) miss_shaders: Box<[SpecializedShader]>,
+    pub(super) callable_shaders: Box<[SpecializedShader]>,
 
     /// A list of non-repeating vk::ShaderModule, alongside their flags
-    pub(super) hitgroup_shaders: Vec<(vk::ShaderStageFlags, vk::ShaderModule)>,
+    pub(super) hitgroup_shaders: Vec<(vk::ShaderStageFlags, SpecializedShader)>,
 
     /// A list of HitGroupEntry that indexes into hitgroup_shaders
     pub(super) hitgroups: Vec<HitGroupEntry>,
@@ -24,9 +24,9 @@ pub enum HitGroupType {
 }
 pub struct HitGroup {
     pub ty: HitGroupType,
-    pub intersection_shader: Option<vk::ShaderModule>,
-    pub anyhit_shader: Option<vk::ShaderModule>,
-    pub closest_hit_shader: Option<vk::ShaderModule>,
+    pub intersection_shader: Option<SpecializedShader>,
+    pub anyhit_shader: Option<SpecializedShader>,
+    pub closest_hit_shader: Option<SpecializedShader>,
 }
 pub(super) struct HitGroupEntry {
     pub(super) ty: HitGroupType,
@@ -35,14 +35,86 @@ pub(super) struct HitGroupEntry {
     pub(super) closest_hit_shader: Option<u32>,
 }
 
+#[derive(Clone)]
+pub struct SpecializationInfo {
+    pub(super) data: Vec<u8>,
+    pub(super) entries: Vec<vk::SpecializationMapEntry>,
+}
+impl PartialEq for SpecializationInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.data == other.data &&
+        self.entries.len() == other.entries.len() &&
+        self.entries
+        .iter()
+        .zip(other.entries.iter())
+        .all(|(this, other)| {
+            this.constant_id == other.constant_id &&
+            this.offset == other.offset &&
+            this.size == other.size
+        })
+    }
+}
+impl Eq for SpecializationInfo{}
+impl SpecializationInfo {
+    pub fn new() -> Self {
+        Self {
+            data: Vec::new(),
+            entries: Vec::new()
+        }
+    }
+    pub fn push<T: Copy + 'static>(&mut self, constant_id: u32, item: T) {
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<bool>() {
+            panic!("Use push_bool")
+        }
+        let size = std::mem::size_of::<T>();
+        self.entries.push(vk::SpecializationMapEntry {
+            constant_id,
+            offset: self.data.len() as u32,
+            size,
+        });
+        self.data.reserve(size);
+        unsafe {
+            let target_ptr = self.data.as_mut_ptr().add(self.data.len());
+            std::ptr::copy_nonoverlapping(&item as *const T as *const u8, target_ptr, size);
+            self.data.set_len(self.data.len() + size);
+        }
+    }
+    pub fn push_bool(&mut self, constant_id: u32, item: bool) {
+        let size = std::mem::size_of::<vk::Bool32>();
+        self.entries.push(vk::SpecializationMapEntry {
+            constant_id,
+            offset: self.data.len() as u32,
+            size,
+        });
+        self.data.reserve(size);
+        unsafe {
+            let item: vk::Bool32 = if item { vk::TRUE } else { vk::FALSE };
+            let target_ptr = self.data.as_mut_ptr().add(self.data.len());
+            std::ptr::copy_nonoverlapping(&item as *const vk::Bool32 as *const u8, target_ptr, size);
+            self.data.set_len(self.data.len() + size);
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct SpecializedShader {
+    pub(super) shader: Arc<Shader>,
+    pub(super) specialization: Option<SpecializationInfo>,
+}
+impl PartialEq for SpecializedShader {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.shader, &other.shader) && self.specialization == other.specialization
+    }
+}
+
 impl SbtLayout {
-    pub fn new<'a>(
-        raygen_shader: vk::ShaderModule,
-        miss_shaders: Box<[vk::ShaderModule]>,
-        callable_shaders: Box<[vk::ShaderModule]>,
-        hitgroups: impl ExactSizeIterator<Item = &'a HitGroup>,
+    pub fn new(
+        raygen_shader: SpecializedShader,
+        miss_shaders: Box<[SpecializedShader]>,
+        callable_shaders: Box<[SpecializedShader]>,
+        hitgroups: impl ExactSizeIterator<Item = HitGroup>,
     ) -> Self {
-        let mut hitgroup_shaders: Vec<(vk::ShaderStageFlags, vk::ShaderModule)> =
+        let mut hitgroup_shaders: Vec<(vk::ShaderStageFlags, SpecializedShader)> =
             Vec::with_capacity(hitgroups.len() * 3);
         let hitgroup_entries: Vec<HitGroupEntry> = hitgroups
             .map(|hitgroup| {
@@ -55,10 +127,12 @@ impl SbtLayout {
                 macro_rules! push_shader {
                     ($shader_type: ident, $shader_stage_flags: expr) => {
                         if let Some(hitgroup_shader) = hitgroup.$shader_type {
+                            // Find index of existing shader
                             let index = hitgroup_shaders
                                 .iter()
-                                .position(|(_, shader)| *shader == hitgroup_shader)
+                                .position(|(_, shader)| shader == &hitgroup_shader)
                                 .unwrap_or_else(|| {
+                                    // Push the new shader into hitgroup_shaders
                                     let index = hitgroup_shaders.len();
                                     hitgroup_shaders.push(($shader_stage_flags, hitgroup_shader));
                                     index

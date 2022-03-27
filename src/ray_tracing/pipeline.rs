@@ -1,5 +1,6 @@
 use super::sbt::{HitGroupType, SbtHandles, SbtLayout};
 use crate::Device;
+use crate::ray_tracing::sbt::SpecializedShader;
 use ash::extensions::khr;
 use ash::{prelude::VkResult, vk};
 use std::{ops::Deref, sync::Arc};
@@ -79,22 +80,29 @@ impl RayTracingPipeline {
             Vec::with_capacity(total_num_groups);
 
         fn create_stage(
-            module: vk::ShaderModule,
+            module: &SpecializedShader,
             stage: vk::ShaderStageFlags,
-            specialization_info: &vk::SpecializationInfo,
         ) -> vk::PipelineShaderStageCreateInfo {
-            const SHADER_ENTRY_NAME_MAIN: &std::ffi::CStr =
+            static SHADER_ENTRY_NAME_MAIN: &std::ffi::CStr =
                 unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"main\0") };
+            let specialization_info = if let Some(info) = module.specialization.as_ref() {
+                vk::SpecializationInfo {
+                    map_entry_count: info.entries.len() as u32,
+                    p_map_entries: info.entries.as_ptr(),
+                    data_size: info.data.len(),
+                    p_data: info.data.as_ptr() as *const std::ffi::c_void,
+                }
+            } else {
+                vk::SpecializationInfo::default()
+            };
             vk::PipelineShaderStageCreateInfo::builder()
                 .flags(vk::PipelineShaderStageCreateFlags::default())
                 .stage(stage)
-                .module(module)
+                .module(module.shader.module)
                 .name(SHADER_ENTRY_NAME_MAIN)
-                .specialization_info(specialization_info)
+                .specialization_info(&specialization_info)
                 .build()
         }
-        let default_specialization_info = vk::SpecializationInfo::default();
-
         let create_infos = sbt_layouts
             .iter()
             .map(|layout| {
@@ -106,22 +114,19 @@ impl RayTracingPipeline {
                 // A list of vk::PipelineShaderStageCreateInfo containing non-repeating shader module stages
                 // with one RayGen shader first, multiple RayMiss shaders, and multiple hitgroup shaders.
                 let sbt_stages = std::iter::once(create_stage(
-                    layout.sbt_layout.raygen_shader,
+                    &layout.sbt_layout.raygen_shader,
                     vk::ShaderStageFlags::RAYGEN_KHR,
-                    &default_specialization_info,
                 ))
-                .chain(layout.sbt_layout.miss_shaders.iter().map(|&module| {
+                .chain(layout.sbt_layout.miss_shaders.iter().map(|module| {
                     create_stage(
                         module,
                         vk::ShaderStageFlags::MISS_KHR,
-                        &default_specialization_info,
                     )
                 }))
-                .chain(layout.sbt_layout.callable_shaders.iter().map(|&module| {
+                .chain(layout.sbt_layout.callable_shaders.iter().map(|module| {
                     create_stage(
                         module,
                         vk::ShaderStageFlags::CALLABLE_KHR,
-                        &default_specialization_info,
                     )
                 }))
                 .chain(
@@ -130,7 +135,7 @@ impl RayTracingPipeline {
                         .hitgroup_shaders
                         .iter()
                         .map(|(stage, module)| {
-                            create_stage(*module, *stage, &default_specialization_info)
+                            create_stage(module, *stage)
                         }),
                 );
                 let stages_range = stages.len()

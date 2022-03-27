@@ -4,7 +4,7 @@ use ash::{vk, Device};
 
 pub struct Shader {
     device: Arc<Device>,
-    module: vk::ShaderModule,
+    pub(crate) module: vk::ShaderModule,
 }
 
 impl Drop for Shader {
