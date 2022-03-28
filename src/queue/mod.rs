@@ -70,4 +70,12 @@ impl Queue {
     ) -> VkResult<()> {
         self.device.queue_submit2(self.queue, submits, fence)
     }
+
+    pub unsafe fn bind_sparse(
+        &mut self,
+        infos: &[vk::BindSparseInfo],
+        fence: vk::Fence,
+    ) -> VkResult<()> {
+        self.device.queue_bind_sparse(self.queue, infos, fence)
+    }
 }

@@ -47,22 +47,22 @@ impl Timeline {
             if self.index == 0 && self.parent_semaphore.is_none() {
                 // This is a brand new timeline. In the other branch, s would've been self.semaphore and
                 // i would've been self.index which is 0. This is a no-op.
-                Vec::new()
+                Box::new([])
             } else {
                 // If self.parent_semaphore is non-none, we've just branched off, so wait on the parent semaphore instead.
                 let (s, i) = self.semaphore_to_wait();
-                vec![SemaphoreOp {
+                Box::new([SemaphoreOp {
                     semaphore: s.clone().downgrade_arc(),
                     stage_mask: wait_stages,
                     value: i,
-                }]
+                }])
             },
-            executables,
-            vec![SemaphoreOp {
+            executables.into_boxed_slice(),
+            Box::new([SemaphoreOp {
                 semaphore: self.semaphore.clone().downgrade_arc(),
                 stage_mask: signal_stages,
                 value: self.index + 1,
-            }],
+            }]),
         );
         self.index += 1;
         self.parent_semaphore = None;
@@ -202,13 +202,13 @@ impl<'a> TimelineJoin<'a> {
         self.timeline.finish_task = Some(Box::pin(joined_fut));
 
         queue.submit(
-            wait_semaphores,
-            executables,
-            vec![SemaphoreOp {
+            wait_semaphores.into_boxed_slice(),
+            executables.into_boxed_slice(),
+            Box::new([SemaphoreOp {
                 semaphore: self.timeline.semaphore.clone().downgrade_arc(),
                 stage_mask: signal_stages,
                 value: self.timeline.index + 1,
-            }],
+            }]),
         );
         self.timeline.index += 1;
         self.timeline.parent_semaphore = None;
