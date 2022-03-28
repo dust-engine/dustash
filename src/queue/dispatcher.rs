@@ -62,9 +62,8 @@ impl QueueDispatcher {
         buffer_binds: Box<[(vk::Buffer, Box<[vk::SparseMemoryBind]>)]>,
         image_opaque_binds: Box<[(vk::Image, Box<[vk::SparseMemoryBind]>)]>,
         image_binds: Box<[(vk::Image, Box<[vk::SparseImageMemoryBind]>)]>,
-        signal_semaphores: Box<[SemaphoreOp]>, 
-    )  -> &Self {
-        
+        signal_semaphores: Box<[SemaphoreOp]>,
+    ) -> &Self {
         self.command_count.fetch_add(1, Ordering::Relaxed);
         self.commands.push(QueueCommand::BindSparse(BindSparse {
             wait_semaphores,
@@ -119,18 +118,25 @@ impl QueueDispatcher {
                         executables_count = 0;
                     }
                     QueueCommand::BindSparse(bind) => {
-                        bind_semaphore_count += bind.signal_semaphores.len() + bind.wait_semaphores.len();
+                        bind_semaphore_count +=
+                            bind.signal_semaphores.len() + bind.wait_semaphores.len();
                         image_bind_count += bind.image_binds.len();
                         image_opaque_bind_count += bind.image_opaque_binds.len();
                         buffer_bind_count += bind.buffer_binds.len();
                         binds.push(bind);
-                    },
+                    }
                 }
             }
         }
         if !binds.is_empty() {
             unsafe {
-                self.queue_bind_sparse(binds, bind_semaphore_count, buffer_bind_count, image_opaque_bind_count, image_bind_count)?;
+                self.queue_bind_sparse(
+                    binds,
+                    bind_semaphore_count,
+                    buffer_bind_count,
+                    image_opaque_bind_count,
+                    image_bind_count,
+                )?;
             }
         }
         // If there are still some unfenced submissions
@@ -157,16 +163,19 @@ impl QueueDispatcher {
         buffer_bind_count: usize,
         image_opaque_bind_count: usize,
         image_bind_count: usize,
-    ) -> VkResult<()>{
+    ) -> VkResult<()> {
         let mut semaphores: Vec<vk::Semaphore> = Vec::with_capacity(num_semaphores);
         let mut semaphore_values: Vec<u64> = Vec::with_capacity(num_semaphores);
         let mut infos: Vec<vk::BindSparseInfo> = Vec::with_capacity(binds.len());
-        let mut timeline_infos: Vec<vk::TimelineSemaphoreSubmitInfo> = Vec::with_capacity(binds.len());
+        let mut timeline_infos: Vec<vk::TimelineSemaphoreSubmitInfo> =
+            Vec::with_capacity(binds.len());
 
-        let mut buffer_binds: Vec<vk::SparseBufferMemoryBindInfo> = Vec::with_capacity(buffer_bind_count);
-        let mut image_opaque_binds: Vec<vk::SparseImageOpaqueMemoryBindInfo> = Vec::with_capacity(image_opaque_bind_count);
-        let mut image_binds: Vec<vk::SparseImageMemoryBindInfo> = Vec::with_capacity(image_bind_count);
-        
+        let mut buffer_binds: Vec<vk::SparseBufferMemoryBindInfo> =
+            Vec::with_capacity(buffer_bind_count);
+        let mut image_opaque_binds: Vec<vk::SparseImageOpaqueMemoryBindInfo> =
+            Vec::with_capacity(image_opaque_bind_count);
+        let mut image_binds: Vec<vk::SparseImageMemoryBindInfo> =
+            Vec::with_capacity(image_bind_count);
 
         // Collect bind infos into vecs while converting into vk formats.
         for info in binds.iter() {
@@ -190,23 +199,29 @@ impl QueueDispatcher {
             });
 
             let p_buffer_binds = buffer_binds.as_ptr().add(buffer_binds.len());
-            buffer_binds.extend(info.buffer_binds.iter().map(|(buffer, bind)| vk::SparseBufferMemoryBindInfo {
-                buffer: *buffer,
-                bind_count: bind.len() as u32,
-                p_binds: bind.as_ptr(),
-            } ));
+            buffer_binds.extend(info.buffer_binds.iter().map(|(buffer, bind)| {
+                vk::SparseBufferMemoryBindInfo {
+                    buffer: *buffer,
+                    bind_count: bind.len() as u32,
+                    p_binds: bind.as_ptr(),
+                }
+            }));
             let p_image_opaque_binds = image_opaque_binds.as_ptr().add(image_opaque_binds.len());
-            image_opaque_binds.extend(info.image_opaque_binds.iter().map(|(image, bind)| vk::SparseImageOpaqueMemoryBindInfo {
-                image: *image,
-                bind_count: bind.len() as u32,
-                p_binds: bind.as_ptr(),
-            } ));
+            image_opaque_binds.extend(info.image_opaque_binds.iter().map(|(image, bind)| {
+                vk::SparseImageOpaqueMemoryBindInfo {
+                    image: *image,
+                    bind_count: bind.len() as u32,
+                    p_binds: bind.as_ptr(),
+                }
+            }));
             let p_image_binds = image_binds.as_ptr().add(image_binds.len());
-            image_binds.extend(info.image_binds.iter().map(|(image, bind)| vk::SparseImageMemoryBindInfo {
-                image: *image,
-                bind_count: bind.len() as u32,
-                p_binds: bind.as_ptr(),
-            } ));
+            image_binds.extend(info.image_binds.iter().map(|(image, bind)| {
+                vk::SparseImageMemoryBindInfo {
+                    image: *image,
+                    bind_count: bind.len() as u32,
+                    p_binds: bind.as_ptr(),
+                }
+            }));
 
             infos.push(vk::BindSparseInfo {
                 wait_semaphore_count: info.wait_semaphores.len() as u32,
@@ -222,9 +237,9 @@ impl QueueDispatcher {
                 p_next: p_timeline_info as *const _,
                 ..Default::default()
             })
-        
         }
-        self.queue.bind_sparse(infos.as_slice(), vk::Fence::null())?;
+        self.queue
+            .bind_sparse(infos.as_slice(), vk::Fence::null())?;
         Ok(())
     }
 
@@ -351,7 +366,7 @@ struct BindSparse {
     buffer_binds: Box<[(vk::Buffer, Box<[vk::SparseMemoryBind]>)]>,
     image_opaque_binds: Box<[(vk::Image, Box<[vk::SparseMemoryBind]>)]>,
     image_binds: Box<[(vk::Image, Box<[vk::SparseImageMemoryBind]>)]>,
-    signal_semaphores: Box<[SemaphoreOp]>, 
+    signal_semaphores: Box<[SemaphoreOp]>,
 }
 enum QueueCommand {
     Submit(Submission),

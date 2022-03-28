@@ -42,24 +42,25 @@ pub struct SpecializationInfo {
 }
 impl PartialEq for SpecializationInfo {
     fn eq(&self, other: &Self) -> bool {
-        self.data == other.data &&
-        self.entries.len() == other.entries.len() &&
-        self.entries
-        .iter()
-        .zip(other.entries.iter())
-        .all(|(this, other)| {
-            this.constant_id == other.constant_id &&
-            this.offset == other.offset &&
-            this.size == other.size
-        })
+        self.data == other.data
+            && self.entries.len() == other.entries.len()
+            && self
+                .entries
+                .iter()
+                .zip(other.entries.iter())
+                .all(|(this, other)| {
+                    this.constant_id == other.constant_id
+                        && this.offset == other.offset
+                        && this.size == other.size
+                })
     }
 }
-impl Eq for SpecializationInfo{}
+impl Eq for SpecializationInfo {}
 impl SpecializationInfo {
     pub fn new() -> Self {
         Self {
             data: Vec::new(),
-            entries: Vec::new()
+            entries: Vec::new(),
         }
     }
     pub fn push<T: Copy + 'static>(&mut self, constant_id: u32, item: T) {
@@ -90,7 +91,11 @@ impl SpecializationInfo {
         unsafe {
             let item: vk::Bool32 = if item { vk::TRUE } else { vk::FALSE };
             let target_ptr = self.data.as_mut_ptr().add(self.data.len());
-            std::ptr::copy_nonoverlapping(&item as *const vk::Bool32 as *const u8, target_ptr, size);
+            std::ptr::copy_nonoverlapping(
+                &item as *const vk::Bool32 as *const u8,
+                target_ptr,
+                size,
+            );
             self.data.set_len(self.data.len() + size);
         }
     }

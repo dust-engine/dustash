@@ -197,9 +197,7 @@ fn main() {
             )
             .fence(acquired_image.complete_fence.clone());
         queues.flush().unwrap();
-        queues
-            .present(&mut frames, acquired_image)
-            .unwrap();
+        queues.present(&mut frames, acquired_image).unwrap();
     });
 }
 

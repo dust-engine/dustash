@@ -61,9 +61,7 @@ impl Queues {
         }
     }
 
-    pub fn flush(
-        &mut self,
-    ) -> VkResult<()> {
+    pub fn flush(&mut self) -> VkResult<()> {
         // We take ownership of AcquiredFrame here, ensuring that Swapchain Acquire occured before submitting command buffers.
         // Note that acquire and present calls should be interleaved. Always present your existing AcquiredFrame before acquiring the next one.
 

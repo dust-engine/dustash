@@ -1,6 +1,6 @@
 use super::sbt::{HitGroupType, SbtHandles, SbtLayout};
-use crate::Device;
 use crate::ray_tracing::sbt::SpecializedShader;
+use crate::Device;
 use ash::extensions::khr;
 use ash::{prelude::VkResult, vk};
 use std::{ops::Deref, sync::Arc};
@@ -117,26 +117,26 @@ impl RayTracingPipeline {
                     &layout.sbt_layout.raygen_shader,
                     vk::ShaderStageFlags::RAYGEN_KHR,
                 ))
-                .chain(layout.sbt_layout.miss_shaders.iter().map(|module| {
-                    create_stage(
-                        module,
-                        vk::ShaderStageFlags::MISS_KHR,
-                    )
-                }))
-                .chain(layout.sbt_layout.callable_shaders.iter().map(|module| {
-                    create_stage(
-                        module,
-                        vk::ShaderStageFlags::CALLABLE_KHR,
-                    )
-                }))
+                .chain(
+                    layout
+                        .sbt_layout
+                        .miss_shaders
+                        .iter()
+                        .map(|module| create_stage(module, vk::ShaderStageFlags::MISS_KHR)),
+                )
+                .chain(
+                    layout
+                        .sbt_layout
+                        .callable_shaders
+                        .iter()
+                        .map(|module| create_stage(module, vk::ShaderStageFlags::CALLABLE_KHR)),
+                )
                 .chain(
                     layout
                         .sbt_layout
                         .hitgroup_shaders
                         .iter()
-                        .map(|(stage, module)| {
-                            create_stage(module, *stage)
-                        }),
+                        .map(|(stage, module)| create_stage(module, *stage)),
                 );
                 let stages_range = stages.len()
                     ..stages.len()
