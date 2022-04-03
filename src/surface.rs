@@ -92,6 +92,32 @@ impl Surface {
         }
     }
 
+    pub fn pick_format(
+        &self,
+        pdevice: &PhysicalDevice,
+        usage: vk::ImageUsageFlags,
+    ) -> VkResult<Option<vk::SurfaceFormatKHR>> {
+        let formats = self.get_formats(pdevice)?;
+        println!("Got formats: {:#?}", formats);
+        let format = formats
+            .into_iter()
+            .filter(|f| {
+                let properties = pdevice
+                    .image_format_properties(&vk::PhysicalDeviceImageFormatInfo2 {
+                        format: f.format,
+                        ty: vk::ImageType::TYPE_2D, // We're gonna use this for presentation on a surface (screen) so the image should be 2D
+                        tiling: vk::ImageTiling::OPTIMAL, // Of course you want optimal tiling for presentation right
+                        usage,
+                        flags: vk::ImageCreateFlags::empty(), // Nothing fancy should be needed for presentation here
+                        ..Default::default()
+                    })
+                    .unwrap();
+                properties.is_some()
+            })
+            .next();
+        Ok(format)
+    }
+
     /// Query color formats supported by surface
     pub fn get_present_modes(&self, pdevice: &PhysicalDevice) -> VkResult<Vec<vk::PresentModeKHR>> {
         assert_eq!(pdevice.instance().handle(), self.loader.instance.handle(), "Both of physicalDevice, and surface must have been created, allocated, or retrieved from the same VkInstance");

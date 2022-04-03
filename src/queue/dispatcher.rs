@@ -35,7 +35,7 @@ impl QueueDispatcher {
     pub fn submit(
         &self,
         wait_semaphores: Box<[SemaphoreOp]>,
-        executables: Box<[CommandExecutable]>,
+        executables: Box<[Arc<CommandExecutable>]>,
         signal_semaphores: Box<[SemaphoreOp]>,
     ) -> &Self {
         self.command_count.fetch_add(1, Ordering::Relaxed);
@@ -358,7 +358,7 @@ impl SemaphoreOp {
 
 struct Submission {
     wait_semaphores: Box<[SemaphoreOp]>,
-    executables: Box<[CommandExecutable]>,
+    executables: Box<[Arc<CommandExecutable>]>,
     signal_semaphores: Box<[SemaphoreOp]>,
 }
 struct BindSparse {

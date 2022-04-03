@@ -647,6 +647,14 @@ pub struct MemoryBarrier<'a> {
     pub prev_accesses: &'a [AccessType],
     pub next_accesses: &'a [AccessType],
 }
+impl<'a> Default for MemoryBarrier<'a> {
+    fn default() -> Self {
+        Self {
+            prev_accesses: &[],
+            next_accesses: &[],
+        }
+    }
+}
 
 /// Buffer barriers should only be used when a queue family ownership transfer
 /// is required - prefer global barriers at all other times.
@@ -705,6 +713,27 @@ pub struct ImageBarrier<'a> {
     pub dst_queue_family_index: u32,
     pub image: vk::Image,
     pub subresource_range: vk::ImageSubresourceRange,
+}
+
+impl<'a> Default for ImageBarrier<'a> {
+    fn default() -> Self {
+        Self {
+            memory_barrier: Default::default(),
+            prev_layout: ImageLayout::Optimal,
+            next_layout: ImageLayout::Optimal,
+            discard_contents: false,
+            src_queue_family_index: 0,
+            dst_queue_family_index: 0,
+            image: vk::Image::null(),
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            },
+        }
+    }
 }
 
 /// Returns: (srcStages, dstStages)

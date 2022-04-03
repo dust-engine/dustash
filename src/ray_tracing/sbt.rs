@@ -35,7 +35,7 @@ pub(super) struct HitGroupEntry {
     pub(super) closest_hit_shader: Option<u32>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SpecializationInfo {
     pub(super) data: Vec<u8>,
     pub(super) entries: Vec<vk::SpecializationMapEntry>,

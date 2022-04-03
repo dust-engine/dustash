@@ -9,7 +9,7 @@ use super::pool::CommandBuffer;
 // Submitting a CommandExecutable in Initial state due to pool reset is a no-op.
 pub struct CommandExecutable {
     pub(crate) command_buffer: CommandBuffer,
-    pub(crate) _resource_guards: Vec<Box<dyn Send>>,
+    pub(crate) _resource_guards: Vec<Box<dyn Send + Sync>>,
 }
 
 // vk::CommandBuffer in Recording state.
@@ -18,7 +18,7 @@ pub struct CommandExecutable {
 pub struct CommandRecorder<'a> {
     pub(crate) device: &'a ash::Device,
     pub(crate) command_buffer: vk::CommandBuffer,
-    pub(crate) referenced_resources: Vec<Box<dyn Send>>,
+    pub(crate) referenced_resources: Vec<Box<dyn Send + Sync>>,
 }
 
 impl CommandBuffer {
@@ -62,7 +62,10 @@ impl CommandBuffer {
 }
 
 impl<'a> CommandRecorder<'a> {
-    pub fn copy_buffer<SRC: HasBuffer + Send + 'static, DST: HasBuffer + Send + 'static>(
+    pub fn copy_buffer<
+        SRC: HasBuffer + Send + Sync + 'static,
+        DST: HasBuffer + Send + Sync + 'static,
+    >(
         &mut self,
         src_buffer: SRC,
         dst_buffer: DST,
@@ -90,7 +93,7 @@ impl<'a> CommandRecorder<'a> {
         self
     }
 
-    pub fn clear_color_image<T: HasImage + Send + 'static>(
+    pub fn clear_color_image<T: HasImage + Send + Sync + 'static>(
         &mut self,
         image: T,
         image_layout: vk::ImageLayout,
@@ -113,7 +116,29 @@ impl<'a> CommandRecorder<'a> {
         self
     }
 
-    pub fn pipeline_barrier(&mut self, dependency_info: &vk::DependencyInfo) -> &mut Self {
+    pub fn pipeline_barrier(
+        &mut self,
+        src_stage_mask: vk::PipelineStageFlags,
+        dst_stage_mask: vk::PipelineStageFlags,
+        dependency_flags: vk::DependencyFlags,
+        memory_barriers: &[vk::MemoryBarrier],
+        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+        image_memory_barriers: &[vk::ImageMemoryBarrier],
+    ) -> &mut Self {
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                self.command_buffer,
+                src_stage_mask,
+                dst_stage_mask,
+                dependency_flags,
+                memory_barriers,
+                buffer_memory_barriers,
+                image_memory_barriers,
+            )
+        }
+        self
+    }
+    pub fn pipeline_barrier2(&mut self, dependency_info: &vk::DependencyInfo) -> &mut Self {
         unsafe {
             self.device
                 .cmd_pipeline_barrier2(self.command_buffer, dependency_info)

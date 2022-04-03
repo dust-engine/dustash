@@ -25,6 +25,10 @@ pub struct FrameManager {
     images: Vec<vk::Image>,
     extent: vk::Extent2D,
     format: vk::SurfaceFormatKHR,
+    present_mode: vk::PresentModeKHR,
+    pre_transform: vk::SurfaceTransformFlagsKHR,
+    image_count: u32,
+
     needs_rebuild: bool,
 
     generation: u64,
@@ -34,6 +38,9 @@ pub struct FrameManager {
 impl FrameManager {
     pub fn device(&self) -> &Arc<Device> {
         self.swapchain_loader.device()
+    }
+    pub fn num_images(&self) -> usize {
+        self.images.len()
     }
 
     fn current_frame(&self) -> &Frame {
@@ -70,6 +77,12 @@ impl FrameManager {
             .collect::<VkResult<Vec<Frame>>>()?;
 
         let queue_info = QueuesCreateInfo::find(swapchain_loader.device().physical_device());
+
+        // Pick a present queue family.
+        // This picks the first queue family supporting presentation on the surface in the given order:
+        // - The Graphics family
+        // - The Compute family
+        // - All other families in the order that they were returned from the driver
         let present_queue_family =
             std::iter::once(queue_info.queue_family_index_for_type(QueueType::Graphics))
                 .chain(std::iter::once(
@@ -84,7 +97,49 @@ impl FrameManager {
                         )
                         .unwrap_or(false)
                 })
-                .expect("Can't find a queue family supporting presentation on this surface");
+                .expect("The physical device does not support presentation on this surface.");
+
+        let surface_capabilities =
+            surface.get_capabilities(swapchain_loader.device().physical_device())?;
+        if !surface_capabilities
+            .supported_usage_flags
+            .contains(options.usage)
+        {
+            panic!()
+        }
+        let pre_transform = if surface_capabilities
+            .supported_transforms
+            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+        {
+            vk::SurfaceTransformFlagsKHR::IDENTITY
+        } else {
+            surface_capabilities.current_transform
+        };
+        let present_mode = surface
+            .get_present_modes(swapchain_loader.device().physical_device())?
+            .iter()
+            .filter_map(|&mode| {
+                Some((
+                    mode,
+                    options
+                        .present_mode_preference
+                        .iter()
+                        .position(|&pref| pref == mode)?,
+                ))
+            })
+            .min_by_key(|&(_, priority)| priority)
+            .map(|(mode, _)| mode)
+            .ok_or(vk::Result::ERROR_OUT_OF_DATE_KHR)?;
+
+        let image_count = (frames.len() as u32)
+            // FIXME: max_image_count may be zero. Need to revisit the logic to select image count.
+            .min(surface_capabilities.max_image_count)
+            .max(surface_capabilities.min_image_count);
+        let format = surface
+            .pick_format(swapchain_loader.device().physical_device(), options.usage)
+            .unwrap()
+            .ok_or(vk::Result::ERROR_OUT_OF_DATE_KHR)?;
+
         let result = Self {
             swapchain_loader,
             swapchain: None,
@@ -94,13 +149,16 @@ impl FrameManager {
             surface,
             images: Vec::new(),
             extent,
-            format: vk::SurfaceFormatKHR::default(),
+            format,
             needs_rebuild: true,
             present_queue_family,
 
             options,
             generation: 0,
             old_swapchains: VecDeque::new(), // TODO: max capacity?
+            present_mode,
+            pre_transform,
+            image_count,
         };
         Ok(result)
     }
@@ -151,18 +209,25 @@ impl FrameManager {
                                 self.needs_rebuild = true;
                             }
                             self.needs_rebuild = suboptimal;
-                            let _invalidate_images =
-                                self.current_frame().generation != self.generation; // TODO: ?
+                            let invalidate_images =
+                                self.current_frame().generation != self.generation;
                             self.current_frame_mut().generation = self.generation;
 
                             let acquired_frame = AcquiredFrame {
                                 image_index: index,
                                 frame_index: self.frame_index,
-                                ready_semaphore: self.current_frame().acquire_semaphore.clone(),
-                                complete_semaphore: self.current_frame().complete_semaphore.clone(),
+                                acquire_ready_semaphore: self
+                                    .current_frame()
+                                    .acquire_semaphore
+                                    .clone(),
+                                render_complete_semaphore: self
+                                    .current_frame()
+                                    .complete_semaphore
+                                    .clone(),
                                 complete_fence: self.current_frame().complete_fence.clone(),
                                 image: self.images[index as usize],
                                 present_queue_family: self.present_queue_family,
+                                invalidate_images,
                             };
                             self.frame_index = next_frame_index;
                             return Ok(acquired_frame);
@@ -181,63 +246,6 @@ impl FrameManager {
     unsafe fn rebuild_swapchain(&mut self) -> VkResult<()> {
         let span = tracing::info_span!("rebuild swapchain");
         let _enter = span.enter();
-
-        let surface_capabilities = self
-            .surface
-            .get_capabilities(self.device().physical_device())?;
-        self.extent = match surface_capabilities.current_extent.width {
-            // If Vulkan doesn't know, the windowing system probably does. Known to apply at
-            // least to Wayland.
-            std::u32::MAX => vk::Extent2D {
-                width: self.extent.width,
-                height: self.extent.height,
-            },
-            _ => surface_capabilities.current_extent,
-        };
-        let pre_transform = if surface_capabilities
-            .supported_transforms
-            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
-        {
-            vk::SurfaceTransformFlagsKHR::IDENTITY
-        } else {
-            surface_capabilities.current_transform
-        };
-        let present_mode = self
-            .surface
-            .get_present_modes(self.device().physical_device())?
-            .iter()
-            .filter_map(|&mode| {
-                Some((
-                    mode,
-                    self.options
-                        .present_mode_preference
-                        .iter()
-                        .position(|&pref| pref == mode)?,
-                ))
-            })
-            .min_by_key(|&(_, priority)| priority)
-            .map(|(mode, _)| mode)
-            .ok_or(vk::Result::ERROR_OUT_OF_DATE_KHR)?;
-
-        let image_count = (self.frames.len() as u32)
-            .min(surface_capabilities.max_image_count)
-            .max(surface_capabilities.min_image_count);
-        self.format = self
-            .surface
-            .get_formats(self.device().physical_device())?
-            .iter()
-            .filter_map(|&format| {
-                Some((
-                    format,
-                    self.options
-                        .format_preference
-                        .iter()
-                        .position(|&pref| pref == format)?,
-                ))
-            })
-            .min_by_key(|&(_, priority)| priority)
-            .map(|(mode, _)| mode)
-            .ok_or(vk::Result::ERROR_OUT_OF_DATE_KHR)?;
 
         let old_swapchain = self.swapchain.take();
         // take apart old_swapchain by force
@@ -263,15 +271,15 @@ impl FrameManager {
 
         let info = vk::SwapchainCreateInfoKHR {
             surface: self.surface.surface,
-            min_image_count: image_count,
+            min_image_count: self.image_count,
             image_color_space: self.format.color_space,
             image_format: self.format.format,
             image_extent: self.extent,
             image_usage: self.options.usage,
             image_sharing_mode: self.options.sharing_mode,
-            pre_transform,
+            pre_transform: self.pre_transform,
             composite_alpha: self.options.composite_alpha,
-            present_mode,
+            present_mode: self.present_mode,
             clipped: vk::TRUE,
             image_array_layers: 1,
             old_swapchain,
@@ -298,7 +306,7 @@ impl FrameManager {
         present_queue: vk::Queue,
         frame: AcquiredFrame,
     ) -> VkResult<()> {
-        let span = tracing::info_span!("present", ?present_queue, semaphore = ?frame.complete_semaphore.semaphore, image_indice = ?frame.image_index);
+        let span = tracing::info_span!("present", ?present_queue, semaphore = ?frame.render_complete_semaphore.semaphore, image_indice = ?frame.image_index);
         let _enter = span.enter();
         // frames.swapchain.is_some() is guaranteed to be true. frames.swapchain is only None on initialization, in which case we wouldn't have AcquiredFrame
         // Safety:
@@ -308,7 +316,7 @@ impl FrameManager {
         // - Host access to pPresentInfo->pSwapchains[] must be externally synchronized. We have &mut frames, and thus ownership on frames.swapchain.
         let suboptimal = self.swapchain.as_mut().unwrap().queue_present(
             present_queue,
-            &[frame.complete_semaphore.semaphore],
+            &[frame.render_complete_semaphore.semaphore],
             frame.image_index,
         )?;
         if suboptimal {
@@ -370,16 +378,20 @@ pub struct AcquiredFrame {
     /// accessed immediately after [`Swapchain::acquire`] returns
     pub frame_index: usize,
     /// Must be waited on before accessing the image associated with `image_index`
-    pub ready_semaphore: Arc<Semaphore>,
+    pub acquire_ready_semaphore: Arc<Semaphore>,
 
     /// Must be signaled when access is complete
-    pub complete_semaphore: Arc<Semaphore>,
+    pub render_complete_semaphore: Arc<Semaphore>,
 
     /// Must be signaled when access to the image associated with `image_index` and any per-frame
     /// resources associated with `frame_index` is complete
     pub complete_fence: Arc<Fence>,
 
     pub image: vk::Image, // Always valid, since we retain a reference to the swapchain
+
+    /// If true, the image contained in this frame is different from previous frames.
+    /// The application must re-record any command buffers
+    pub invalidate_images: bool,
 }
 
 impl HasImage for AcquiredFrame {

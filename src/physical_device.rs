@@ -45,6 +45,23 @@ impl PhysicalDevice {
     pub fn features(&self) -> &PhysicalDeviceFeatures {
         &self.features
     }
+    pub fn image_format_properties(
+        &self,
+        format_info: &vk::PhysicalDeviceImageFormatInfo2,
+    ) -> VkResult<Option<vk::ImageFormatProperties2>> {
+        let mut out = vk::ImageFormatProperties2::default();
+        unsafe {
+            match self.instance.get_physical_device_image_format_properties2(
+                self.physical_device,
+                format_info,
+                &mut out,
+            ) {
+                Err(vk::Result::ERROR_FORMAT_NOT_SUPPORTED) => Ok(None),
+                Ok(_) => Ok(Some(out)),
+                Err(_) => panic!(),
+            }
+        }
+    }
     pub(crate) fn get_queue_family_properties(&self) -> Vec<vk::QueueFamilyProperties> {
         unsafe {
             self.instance

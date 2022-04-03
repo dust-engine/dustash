@@ -3,8 +3,7 @@ use std::{mem::MaybeUninit, ptr::null};
 use ash::vk;
 
 use super::recorder::CommandRecorder;
-pub use super::sync::{AccessType, BufferBarrier, ImageBarrier, MemoryBarrier};
-use crate::command::sync::ImageLayout;
+pub use super::sync::{AccessType, BufferBarrier, ImageBarrier, ImageLayout, MemoryBarrier};
 struct VkAccessInfo2 {
     stage_mask: vk::PipelineStageFlags2,
     access_mask: vk::AccessFlags2,

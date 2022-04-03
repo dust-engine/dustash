@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{command::recorder::CommandExecutable, Device};
 
-type BoxedVkFuture = Pin<Box<dyn Future<Output = VkResult<()>>>>;
+type BoxedVkFuture = Pin<Box<dyn Future<Output = VkResult<()>> + Send + Sync>>;
 
 pub struct Timeline {
     parent_semaphore: Option<(Arc<TimelineSemaphore>, u64)>, // For branching
@@ -39,7 +39,7 @@ impl Timeline {
     pub fn next(
         &mut self,
         queue: &QueueDispatcher,
-        executables: Vec<CommandExecutable>,
+        executables: Box<[Arc<CommandExecutable>]>,
         wait_stages: vk::PipelineStageFlags2,
         signal_stages: vk::PipelineStageFlags2,
     ) -> &mut Self {
@@ -57,7 +57,7 @@ impl Timeline {
                     value: i,
                 }])
             },
-            executables.into_boxed_slice(),
+            executables,
             Box::new([SemaphoreOp {
                 semaphore: self.semaphore.clone().downgrade_arc(),
                 stage_mask: signal_stages,
@@ -73,7 +73,10 @@ impl Timeline {
     We need to figure out a way to do this. For example, next() might need to return multiple branches.
     */
     /// Schedule to perform a CPU task
-    pub fn then(&mut self, task: impl Future<Output = VkResult<()>> + 'static) -> &mut Self {
+    pub fn then(
+        &mut self,
+        task: impl Future<Output = VkResult<()>> + Send + Sync + 'static,
+    ) -> &mut Self {
         let semaphore_to_wait = if self.index == 0 && self.parent_semaphore.is_none() {
             None
         } else {
@@ -167,7 +170,7 @@ impl<'a> TimelineJoin<'a> {
     pub fn next(
         self,
         queue: &QueueDispatcher,
-        executables: Vec<CommandExecutable>,
+        executables: Vec<Arc<CommandExecutable>>,
         wait_stages: vk::PipelineStageFlags2,
         signal_stages: vk::PipelineStageFlags2,
     ) -> &'a mut Timeline {
@@ -215,7 +218,10 @@ impl<'a> TimelineJoin<'a> {
 
         self.timeline
     }
-    pub fn then(self, future: impl Future<Output = VkResult<()>> + 'static) -> &'a mut Timeline {
+    pub fn then(
+        self,
+        future: impl Future<Output = VkResult<()>> + Send + Sync + 'static,
+    ) -> &'a mut Timeline {
         let (wait_semaphores, futs): (Vec<TimelineSemaphoreOp>, Vec<_>) = std::iter::once({
             let (s, i) = self.timeline.semaphore_to_wait();
             let op = TimelineSemaphoreOp {

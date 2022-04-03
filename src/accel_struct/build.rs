@@ -377,7 +377,7 @@ impl AccelerationStructureBuilder {
             acceleration_structures
                 .iter()
                 .cloned()
-                .map(|a| Box::new(a) as Box<dyn Send>),
+                .map(|a| Box::new(a) as Box<dyn Send + Sync>),
         );
         command_recorder
             .referenced_resources

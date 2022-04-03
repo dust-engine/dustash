@@ -59,7 +59,10 @@ impl TimelineSemaphore {
             })
         }
     }
-    pub fn wait(self: Arc<TimelineSemaphore>, value: u64) -> impl Future<Output = VkResult<()>> {
+    pub fn wait(
+        self: Arc<TimelineSemaphore>,
+        value: u64,
+    ) -> impl Future<Output = VkResult<()>> + Send + Sync {
         blocking::unblock(move || {
             let value_this = value;
             let semaphore_this = self.0.semaphore;
@@ -159,7 +162,7 @@ pub struct TimelineSemaphoreOp {
 }
 
 impl TimelineSemaphoreOp {
-    pub fn wait(self) -> impl Future<Output = VkResult<()>> {
+    pub fn wait(self) -> impl Future<Output = VkResult<()>> + Unpin {
         self.semaphore.wait(self.value)
     }
 }
