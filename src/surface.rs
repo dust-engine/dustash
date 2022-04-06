@@ -98,7 +98,6 @@ impl Surface {
         usage: vk::ImageUsageFlags,
     ) -> VkResult<Option<vk::SurfaceFormatKHR>> {
         let formats = self.get_formats(pdevice)?;
-        println!("Got formats: {:#?}", formats);
         let format = formats
             .into_iter()
             .filter(|f| {

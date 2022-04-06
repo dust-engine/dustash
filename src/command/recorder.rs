@@ -1,4 +1,4 @@
-use ash::{prelude::VkResult, vk};
+use ash::{prelude::VkResult, vk::{self, CommandBufferResetFlags}};
 
 use crate::resources::{buffer::HasBuffer, HasImage};
 
@@ -10,6 +10,20 @@ use super::pool::CommandBuffer;
 pub struct CommandExecutable {
     pub(crate) command_buffer: CommandBuffer,
     pub(crate) _resource_guards: Vec<Box<dyn Send + Sync>>,
+}
+
+impl CommandExecutable {
+    pub fn reset(self, release_resources: bool) -> CommandBuffer {
+        let mut flags = vk::CommandBufferResetFlags::empty();
+        if release_resources {
+            flags |= vk::CommandBufferResetFlags::RELEASE_RESOURCES;
+        }
+        tracing::debug!(command_buffer = ?self.command_buffer.buffer, "Reset command buffer");
+        unsafe {
+            self.command_buffer.pool.device.reset_command_buffer(self.command_buffer.buffer, flags).unwrap();
+        }
+        self.command_buffer
+    }
 }
 
 // vk::CommandBuffer in Recording state.
