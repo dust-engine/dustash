@@ -5,9 +5,12 @@ use std::sync::{
 
 use ash::{prelude::VkResult, vk};
 
-use crate::{command::recorder::CommandExecutable, fence::Fence};
+use crate::{command::recorder::CommandExecutable, fence::Fence, frames::AcquiredFrame, Device};
 
-use super::{semaphore::Semaphore, Queue, QueueType};
+#[cfg(feature = "shared_command_pool")]
+use crate::command::shared_pool::SharedCommandPool;
+
+use super::{router::QueueIndex, semaphore::Semaphore, Queue, QueueType};
 
 /// Queue operations require exclusive access to the Queue object, and it's usually more
 /// performant to batch queue submissions together.
@@ -15,28 +18,48 @@ use super::{semaphore::Semaphore, Queue, QueueType};
 /// so that the queue operations can be submitted in batch on a frame-to-frame basis.
 pub struct QueueDispatcher {
     pub(crate) queue: Queue,
+    index: QueueIndex,
     assigned_queue_type: Option<QueueType>,
     commands: crossbeam_queue::SegQueue<QueueCommand>,
     command_count: AtomicUsize,
+
+    #[cfg(feature = "shared_command_pool")]
+    shared_command_pool: SharedCommandPool,
 }
 
 impl QueueDispatcher {
-    pub fn new(queue: Queue, assigned_type: Option<QueueType>) -> Self {
+    pub fn new(queue: Queue, assigned_type: Option<QueueType>, index: QueueIndex) -> Self {
         QueueDispatcher {
-            queue,
             assigned_queue_type: assigned_type,
             commands: crossbeam_queue::SegQueue::new(),
             command_count: AtomicUsize::new(0),
+            #[cfg(feature = "shared_command_pool")]
+            shared_command_pool: SharedCommandPool {
+                device: queue.device.clone(),
+                pool: thread_local::ThreadLocal::new(),
+                queue_family_index: queue.family_index,
+            },
+            queue,
+            index,
         }
+    }
+    pub fn device(&self) -> &Arc<Device> {
+        self.queue.device()
+    }
+    pub fn shared_command_pool(&self) -> &SharedCommandPool {
+        &self.shared_command_pool
     }
     pub fn family_index(&self) -> u32 {
         self.queue.family_index
     }
+    pub fn index(&self) -> QueueIndex {
+        self.index
+    }
     pub fn submit(
         &self,
-        wait_semaphores: Box<[SemaphoreOp]>,
+        wait_semaphores: Box<[StagedSemaphoreOp]>,
         executables: Box<[Arc<CommandExecutable>]>,
-        signal_semaphores: Box<[SemaphoreOp]>,
+        signal_semaphores: Box<[StagedSemaphoreOp]>,
     ) -> &Self {
         self.command_count.fetch_add(1, Ordering::Relaxed);
         self.commands.push(QueueCommand::Submit(Submission {
@@ -46,7 +69,10 @@ impl QueueDispatcher {
         }));
         self
     }
-    // Note that this is only going to influence queue submits.
+    /// This only buffers the fence command and it won't actually call vkQueueSubmit.
+    /// Calling vkQueueSubmit requires exclusive access to the vkQueue, so it's better to wait until
+    /// the end of the frame to do this in one go.
+    /// Note that this is only going to influence queue submits. Won't do anything for sparse binds.
     pub fn fence(&self, fence: Arc<Fence>) -> &Self {
         self.command_count.fetch_add(1, Ordering::Relaxed);
         self.commands.push(QueueCommand::Fence(fence));
@@ -330,14 +356,44 @@ impl QueueSubmissionFence {
 ///
 /// stage_mask in signal semaphores: Block the semaphore signal operation on the completion of these stages.
 /// The semaphore will be signaled even if other stages are still running.
-pub struct SemaphoreOp {
+#[derive(Clone)]
+pub struct StagedSemaphoreOp {
     pub semaphore: Arc<Semaphore>,
     pub stage_mask: vk::PipelineStageFlags2,
+    // When value == 0, the `StagedSemaphoreOp` is a binary semaphore.
     pub value: u64,
 }
+
+#[derive(Clone)]
+pub struct SemaphoreOp {
+    pub semaphore: Arc<Semaphore>,
+    pub value: u64,
+}
+
 impl SemaphoreOp {
+    pub fn staged(self, stage: vk::PipelineStageFlags2) -> StagedSemaphoreOp {
+        StagedSemaphoreOp {
+            semaphore: self.semaphore,
+            stage_mask: stage,
+            value: self.value,
+        }
+    }
+    pub fn increment(self) -> Self {
+        Self {
+            semaphore: self.semaphore,
+            value: self.value + 1,
+        }
+    }
+    pub fn is_timeline(&self) -> bool {
+        // Because the semaphore value is always >= 0, signaling a semaphore to be 0
+        // or waiting a semaphore to turn 0 is meaningless.
+        self.value != 0
+    }
+}
+
+impl StagedSemaphoreOp {
     pub fn binary(semaphore: Arc<Semaphore>, stage_mask: vk::PipelineStageFlags2) -> Self {
-        SemaphoreOp {
+        StagedSemaphoreOp {
             semaphore,
             stage_mask,
             value: 0,
@@ -348,18 +404,36 @@ impl SemaphoreOp {
         stage_mask: vk::PipelineStageFlags2,
         value: u64,
     ) -> Self {
-        SemaphoreOp {
+        StagedSemaphoreOp {
             semaphore,
             stage_mask,
             value,
         }
     }
+    pub fn is_timeline(&self) -> bool {
+        // Because the semaphore value is always >= 0, signaling a semaphore to be 0
+        // or waiting a semaphore to turn 0 is meaningless.
+        self.value != 0
+    }
+    pub fn stageless(self) -> SemaphoreOp {
+        SemaphoreOp {
+            semaphore: self.semaphore,
+            value: self.value,
+        }
+    }
+    pub fn increment(self) -> Self {
+        Self {
+            semaphore: self.semaphore,
+            value: self.value + 1,
+            stage_mask: self.stage_mask,
+        }
+    }
 }
 
 struct Submission {
-    wait_semaphores: Box<[SemaphoreOp]>,
+    wait_semaphores: Box<[StagedSemaphoreOp]>,
     executables: Box<[Arc<CommandExecutable>]>,
-    signal_semaphores: Box<[SemaphoreOp]>,
+    signal_semaphores: Box<[StagedSemaphoreOp]>,
 }
 struct BindSparse {
     wait_semaphores: Box<[SemaphoreOp]>,

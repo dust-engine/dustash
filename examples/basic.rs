@@ -185,12 +185,12 @@ fn main() {
         queues
             .of_type(QueueType::Compute)
             .submit(
-                vec![dustash::queue::SemaphoreOp::binary(
+                vec![dustash::queue::StagedSemaphoreOp::binary(
                     acquired_image.ready_semaphore.clone(),
                     vk::PipelineStageFlags2::CLEAR,
                 )],
                 vec![exec],
-                vec![dustash::queue::SemaphoreOp::binary(
+                vec![dustash::queue::StagedSemaphoreOp::binary(
                     acquired_image.complete_semaphore.clone(),
                     vk::PipelineStageFlags2::CLEAR,
                 )],

@@ -113,7 +113,9 @@ impl TimelineSemaphore {
         })
     }
 
-    pub fn wait_many(semaphores: Vec<TimelineSemaphoreOp>) -> impl Future<Output = VkResult<()>> {
+    pub fn wait_many(
+        semaphores: Vec<TimelineStagedSemaphoreOp>,
+    ) -> impl Future<Output = VkResult<()>> {
         // Ensure that all semaphores have the same device
         let device = semaphores[0].semaphore.0.device.clone();
         for op in semaphores.iter() {
@@ -156,12 +158,12 @@ impl TimelineSemaphore {
     }
 }
 
-pub struct TimelineSemaphoreOp {
+pub struct TimelineStagedSemaphoreOp {
     pub semaphore: Arc<TimelineSemaphore>,
     pub value: u64,
 }
 
-impl TimelineSemaphoreOp {
+impl TimelineStagedSemaphoreOp {
     pub fn wait(self) -> impl Future<Output = VkResult<()>> + Unpin {
         self.semaphore.wait(self.value)
     }

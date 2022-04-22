@@ -1,11 +1,12 @@
 mod dispatcher;
-pub use dispatcher::SemaphoreOp;
+pub use dispatcher::{SemaphoreOp, StagedSemaphoreOp};
 mod router;
 pub mod semaphore;
 pub mod timeline;
 use crate::{command::recorder::CommandExecutable, fence::Fence, Device};
 use ash::{prelude::VkResult, vk};
-pub use router::{QueueType, Queues, QueuesCreateInfo};
+pub use dispatcher::QueueDispatcher;
+pub use router::{QueueIndex, QueueType, Queues, QueuesCreateInfo};
 use std::{
     future::{Future, IntoFuture},
     sync::Arc,
@@ -15,6 +16,12 @@ pub struct Queue {
     pub(super) device: Arc<Device>,
     pub(super) queue: vk::Queue,
     pub(super) family_index: u32,
+}
+
+impl Queue {
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 /// A thin wrapper for a Vulkan Queue. Most queue operations require host-side syncronization,

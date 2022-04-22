@@ -4,8 +4,8 @@ use futures_util::{future::join_all, FutureExt};
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use super::{
-    dispatcher::{QueueDispatcher, SemaphoreOp},
-    semaphore::{TimelineSemaphore, TimelineSemaphoreOp},
+    dispatcher::{QueueDispatcher, StagedSemaphoreOp},
+    semaphore::{TimelineSemaphore, TimelineStagedSemaphoreOp},
 };
 use crate::{command::recorder::CommandExecutable, Device};
 
@@ -51,14 +51,14 @@ impl Timeline {
             } else {
                 // If self.parent_semaphore is non-none, we've just branched off, so wait on the parent semaphore instead.
                 let (s, i) = self.semaphore_to_wait();
-                Box::new([SemaphoreOp {
+                Box::new([StagedSemaphoreOp {
                     semaphore: s.clone().downgrade_arc(),
                     stage_mask: wait_stages,
                     value: i,
                 }])
             },
             executables,
-            Box::new([SemaphoreOp {
+            Box::new([StagedSemaphoreOp {
                 semaphore: self.semaphore.clone().downgrade_arc(),
                 stage_mask: signal_stages,
                 value: self.index + 1,
@@ -81,13 +81,13 @@ impl Timeline {
             None
         } else {
             let (semaphore, index) = self.semaphore_to_wait();
-            Some(TimelineSemaphoreOp {
+            Some(TimelineStagedSemaphoreOp {
                 semaphore: semaphore.clone(),
                 value: index,
             })
         };
 
-        let semaphore_to_signal = TimelineSemaphoreOp {
+        let semaphore_to_signal = TimelineStagedSemaphoreOp {
             semaphore: self.semaphore.clone(),
             value: self.index + 1,
         };
@@ -174,9 +174,9 @@ impl<'a> TimelineJoin<'a> {
         wait_stages: vk::PipelineStageFlags2,
         signal_stages: vk::PipelineStageFlags2,
     ) -> &'a mut Timeline {
-        let (wait_semaphores, futs): (Vec<SemaphoreOp>, Vec<_>) = std::iter::once({
+        let (wait_semaphores, futs): (Vec<StagedSemaphoreOp>, Vec<_>) = std::iter::once({
             let (s, i) = self.timeline.semaphore_to_wait();
-            let op = SemaphoreOp {
+            let op = StagedSemaphoreOp {
                 semaphore: s.clone().downgrade_arc(),
                 stage_mask: wait_stages,
                 value: i,
@@ -190,7 +190,7 @@ impl<'a> TimelineJoin<'a> {
             }
             let (s, i) = t.semaphore_to_wait();
 
-            let op = SemaphoreOp {
+            let op = StagedSemaphoreOp {
                 semaphore: s.clone().downgrade_arc(),
                 stage_mask: wait_stages,
                 value: i,
@@ -207,7 +207,7 @@ impl<'a> TimelineJoin<'a> {
         queue.submit(
             wait_semaphores.into_boxed_slice(),
             executables.into_boxed_slice(),
-            Box::new([SemaphoreOp {
+            Box::new([StagedSemaphoreOp {
                 semaphore: self.timeline.semaphore.clone().downgrade_arc(),
                 stage_mask: signal_stages,
                 value: self.timeline.index + 1,
@@ -222,9 +222,9 @@ impl<'a> TimelineJoin<'a> {
         self,
         future: impl Future<Output = VkResult<()>> + Send + Sync + 'static,
     ) -> &'a mut Timeline {
-        let (wait_semaphores, futs): (Vec<TimelineSemaphoreOp>, Vec<_>) = std::iter::once({
+        let (wait_semaphores, futs): (Vec<TimelineStagedSemaphoreOp>, Vec<_>) = std::iter::once({
             let (s, i) = self.timeline.semaphore_to_wait();
-            let op = TimelineSemaphoreOp {
+            let op = TimelineStagedSemaphoreOp {
                 semaphore: s.clone(),
                 value: i,
             };
@@ -237,7 +237,7 @@ impl<'a> TimelineJoin<'a> {
             }
             let (s, i) = t.semaphore_to_wait();
 
-            let op = TimelineSemaphoreOp {
+            let op = TimelineStagedSemaphoreOp {
                 semaphore: s.clone(),
                 value: i,
             };

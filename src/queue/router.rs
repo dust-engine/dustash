@@ -22,6 +22,9 @@ impl QueueType {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct QueueIndex(pub(crate) usize);
+
 /// A collection of QueueDispatcher. It creates manages a number of QueueDispatcher based on the device-specific queue flags.
 /// On submission, it routes the submission to the queue with the minimal number of declared capabilities.
 ///
@@ -36,6 +39,13 @@ impl Queues {
         let i = self.queue_type_to_dispatcher[ty as usize];
         &self.queues[i as usize]
     }
+    pub fn of_index(&self, index: QueueIndex) -> &QueueDispatcher {
+        &self.queues[index.0]
+    }
+    pub fn index_of_type(&self, ty: QueueType) -> QueueIndex {
+        let i = self.queue_type_to_dispatcher[ty as usize];
+        QueueIndex(i as usize)
+    }
 }
 
 impl Queues {
@@ -45,14 +55,15 @@ impl Queues {
             .create_infos
             .iter()
             .zip(create_info.queue_family_to_types.iter())
-            .map(|(queue_create_info, ty)| {
+            .enumerate()
+            .map(|(index, (queue_create_info, ty))| {
                 let queue = device.get_device_queue(queue_create_info.queue_family_index, 0); // We always just create at most one queue for each queue family
                 let queue = Queue {
                     device: device.clone(),
                     queue,
                     family_index: queue_create_info.queue_family_index,
                 };
-                QueueDispatcher::new(queue, *ty)
+                QueueDispatcher::new(queue, *ty, QueueIndex(index))
             })
             .collect();
         Queues {

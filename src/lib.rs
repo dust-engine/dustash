@@ -28,6 +28,7 @@ pub use physical_device::*;
 pub mod descriptor;
 pub mod ray_tracing;
 pub mod shader;
+pub mod sync;
 
 pub struct Instance {
     entry: Arc<ash::Entry>,

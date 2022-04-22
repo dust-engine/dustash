@@ -10,6 +10,9 @@ use crate::{command::recorder::CommandRecorder, Device};
 
 use super::buffer::HasBuffer;
 
+pub use gpu_alloc::UsageFlags as MemoryUsageFlags;
+pub use vk::BufferUsageFlags;
+
 pub enum StagingStrategy {
     /// There does not exist any DeviceLocal, HostVisible memory.
     /// e.g. NVIDIA

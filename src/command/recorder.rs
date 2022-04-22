@@ -1,8 +1,16 @@
-use ash::{prelude::VkResult, vk::{self, CommandBufferResetFlags}};
+use ash::{
+    prelude::VkResult,
+    vk::{self, CommandBufferResetFlags},
+};
 
 use crate::resources::{buffer::HasBuffer, HasImage};
 
 use super::pool::CommandBuffer;
+
+pub struct CommandBufferBuilder {
+    command_buffer: CommandBuffer,
+    resource_guards: Vec<Box<dyn Send + Sync>>,
+}
 
 // A command buffer in Executable state.
 // Once a command buffer was recorded it becomes immutable.
@@ -20,7 +28,11 @@ impl CommandExecutable {
         }
         tracing::debug!(command_buffer = ?self.command_buffer.buffer, "Reset command buffer");
         unsafe {
-            self.command_buffer.pool.device.reset_command_buffer(self.command_buffer.buffer, flags).unwrap();
+            self.command_buffer
+                .pool
+                .device
+                .reset_command_buffer(self.command_buffer.buffer, flags)
+                .unwrap();
         }
         self.command_buffer
     }
@@ -32,17 +44,13 @@ impl CommandExecutable {
 pub struct CommandRecorder<'a> {
     pub(crate) device: &'a ash::Device,
     pub(crate) command_buffer: vk::CommandBuffer,
-    pub(crate) referenced_resources: Vec<Box<dyn Send + Sync>>,
+    pub(crate) referenced_resources: &'a mut Vec<Box<dyn Send + Sync>>,
 }
 
 impl CommandBuffer {
-    pub fn record(
-        self,
-        flags: vk::CommandBufferUsageFlags,
-        record: impl FnOnce(&mut CommandRecorder),
-    ) -> VkResult<CommandExecutable> {
-        let pool = self.pool.pool.lock();
-        let referenced_resources = unsafe {
+    pub fn start(self, flags: vk::CommandBufferUsageFlags) -> VkResult<CommandBufferBuilder> {
+        unsafe {
+            let pool = self.pool.pool.lock().unwrap();
             // Safety: Host Syncronization rule for vkBeginCommandBuffer:
             // - Host access to commandBuffer must be externally synchronized.
             // - Host access to the VkCommandPool that commandBuffer was allocated from must be externally synchronized.
@@ -52,26 +60,40 @@ impl CommandBuffer {
                 self.buffer,
                 &vk::CommandBufferBeginInfo::builder().flags(flags).build(),
             )?;
-            let mut recorder = CommandRecorder {
-                device: self.pool.device.as_ref(),
-                command_buffer: self.buffer,
-                referenced_resources: Vec::new(),
-            };
-            record(&mut recorder);
-
-            // Safety: Host Syncronization rule for vkBeginCommandBuffer:
-            // - Host access to commandBuffer must be externally synchronized.
-            // - Host access to the VkCommandPool that commandBuffer was allocated from must be externally synchronized.
-            // We have self and thus exclusive control on commandBuffer.
-            // self.pool.pool is protected behind a mutex.
-            self.pool.device.end_command_buffer(self.buffer)?;
-            recorder.referenced_resources
-        };
-        drop(pool);
-        Ok(CommandExecutable {
+            drop(pool);
+        }
+        Ok(CommandBufferBuilder {
             command_buffer: self,
-            _resource_guards: referenced_resources,
+            resource_guards: Vec::new(),
         })
+    }
+}
+
+impl CommandBufferBuilder {
+    pub fn record(&mut self, f: impl FnOnce(CommandRecorder)) {
+        let recorder = CommandRecorder {
+            device: self.command_buffer.pool.device.as_ref(),
+            command_buffer: self.command_buffer.buffer,
+            referenced_resources: &mut self.resource_guards,
+        };
+        let pool = self.command_buffer.pool.pool.lock().unwrap();
+        f(recorder);
+        drop(pool);
+    }
+    pub fn end(self) -> VkResult<CommandExecutable> {
+        unsafe {
+            let pool = self.command_buffer.pool.pool.lock().unwrap();
+            self.command_buffer
+                .pool
+                .device
+                .end_command_buffer(self.command_buffer.buffer)?;
+            drop(pool);
+            let exec = CommandExecutable {
+                command_buffer: self.command_buffer,
+                _resource_guards: self.resource_guards,
+            };
+            Ok(exec)
+        }
     }
 }
 
