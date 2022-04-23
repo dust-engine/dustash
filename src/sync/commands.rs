@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    command::recorder::CommandExecutable,
+    command::recorder::{CommandBufferBuilder, CommandExecutable, CommandRecorder},
     queue::{semaphore::TimelineSemaphore, QueueIndex, Queues, SemaphoreOp, StagedSemaphoreOp},
 };
 use ash::vk;
@@ -16,9 +16,12 @@ pub struct CommandsFuture<'q> {
     pub(crate) semaphore_waits: Vec<StagedSemaphoreOp>,
     pub(crate) cmd_execs: Vec<Arc<CommandExecutable>>,
     pub(crate) semaphore_signals: Vec<StagedSemaphoreOp>,
+
+    recording_cmd_buf: Option<CommandBufferBuilder>,
 }
 impl Drop for CommandsFuture<'_> {
     fn drop(&mut self) {
+        self.flush_recording_commands();
         use std::mem::take;
         // When dropping CommandsFuture it is no longer possible to add semaphores to it.
         // Therefore, this is in fact the best opportunity to flush.
@@ -44,6 +47,33 @@ impl<'q> CommandsFuture<'q> {
     }
     fn push_semaphore_pool(&mut self, semaphore: SemaphoreOp) {
         self.available_semaphore_pool.push(semaphore);
+    }
+
+    pub fn then_command_exec(mut self, command_exec: Arc<CommandExecutable>) -> Self {
+        self.cmd_execs.push(command_exec);
+        self
+    }
+
+    pub fn then_commands(mut self, f: impl FnOnce(CommandRecorder)) -> Self {
+        let mut recording_buffer = self.recording_cmd_buf.take().unwrap_or_else(|| {
+            let buf = self
+                .queues
+                .of_index(self.queue)
+                .shared_command_pool()
+                .allocate_one()
+                .unwrap();
+            buf.start(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+                .unwrap()
+        });
+        recording_buffer.record(f);
+        self.recording_cmd_buf = Some(recording_buffer);
+        self
+    }
+    fn flush_recording_commands(&mut self) {
+        if let Some(builder) = self.recording_cmd_buf.take() {
+            let exec = builder.end().unwrap();
+            self.cmd_execs.push(Arc::new(exec));
+        }
     }
 }
 pub struct CommandsStageFuture<'q, 'a> {
@@ -94,6 +124,7 @@ impl<'q> CommandsFuture<'q> {
             queue,
             cmd_execs: execs,
             available_semaphore_pool: Vec::new(),
+            recording_cmd_buf: None,
         }
     }
     pub fn stage<'a>(&'a mut self, stage: vk::PipelineStageFlags2) -> CommandsStageFuture<'q, 'a> {

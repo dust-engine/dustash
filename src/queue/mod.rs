@@ -2,7 +2,6 @@ mod dispatcher;
 pub use dispatcher::{SemaphoreOp, StagedSemaphoreOp};
 mod router;
 pub mod semaphore;
-pub mod timeline;
 use crate::{command::recorder::CommandExecutable, fence::Fence, Device};
 use ash::{prelude::VkResult, vk};
 pub use dispatcher::QueueDispatcher;

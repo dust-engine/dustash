@@ -1,12 +1,23 @@
 use crate::{frames::AcquiredFrame, queue::SemaphoreOp};
 
 mod commands;
+mod host;
 mod sparse_binding;
 mod swapchain;
 
 pub use commands::{CommandsFuture, CommandsStageFuture};
 pub use sparse_binding::SparseBindingFuture;
 
+/// `GPUFuture` handles the execution dependencies between queue operations.
+/// It uses TimelineSemaphore for syncronization by default, but as a special case it also supports
+/// waiting and signalling binary semaphores for swapchain operations.
+///
+/// We can use `GPUFuture::then` and `GPUFuture::then_present` to generate a render graph with futures.
+/// Any render graph is essentially a [`DAG`] of queue operations, and we can represent this DAG with
+/// timeline semaphores. Exactly x timeline semaphores would be required to fully represent a DAG,
+/// where x is the width of the DAG.
+///
+/// [`DAG`]: https://en.wikipedia.org/wiki/Directed_acyclic_graph
 pub trait GPUFuture {
     type NextFuture;
     fn pop_semaphore_pool(&mut self) -> SemaphoreOp;

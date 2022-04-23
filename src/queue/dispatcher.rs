@@ -10,7 +10,11 @@ use crate::{command::recorder::CommandExecutable, fence::Fence, Device};
 #[cfg(feature = "shared_command_pool")]
 use crate::command::shared_pool::SharedCommandPool;
 
-use super::{router::QueueIndex, semaphore::Semaphore, Queue, QueueType};
+use super::{
+    router::QueueIndex,
+    semaphore::{Semaphore, TimelineSemaphoreOp},
+    Queue, QueueType,
+};
 
 /// Queue operations require exclusive access to the Queue object, and it's usually more
 /// performant to batch queue submissions together.
@@ -388,6 +392,13 @@ impl SemaphoreOp {
         // Because the semaphore value is always >= 0, signaling a semaphore to be 0
         // or waiting a semaphore to turn 0 is meaningless.
         self.value != 0
+    }
+    pub fn as_timeline(self) -> TimelineSemaphoreOp {
+        assert!(self.is_timeline());
+        TimelineSemaphoreOp {
+            semaphore: unsafe { self.semaphore.as_timeline_arc() },
+            value: self.value,
+        }
     }
 }
 

@@ -4,6 +4,8 @@ use ash::{prelude::VkResult, vk};
 
 use crate::Device;
 
+use super::SemaphoreOp;
+
 pub struct Semaphore {
     pub(crate) device: Arc<Device>,
     pub(crate) semaphore: vk::Semaphore,
@@ -20,6 +22,9 @@ impl Semaphore {
         let create_info = vk::SemaphoreCreateInfo::default();
         let semaphore = unsafe { device.create_semaphore(&create_info, None)? };
         Ok(Self { device, semaphore })
+    }
+    pub unsafe fn as_timeline_arc(self: Arc<Self>) -> Arc<TimelineSemaphore> {
+        std::mem::transmute(self)
     }
 }
 
@@ -83,18 +88,18 @@ impl TimelineSemaphore {
     }
 
     pub fn wait_n<const N: usize>(
-        semaphores: [(Arc<TimelineSemaphore>, u64); N],
+        semaphores: [TimelineSemaphoreOp; N],
     ) -> impl Future<Output = VkResult<()>> {
         // Ensure that all semaphores have the same device
-        let device = semaphores[0].0 .0.device.clone();
-        for (semaphore, _) in semaphores.iter() {
-            assert_eq!(semaphore.0.device.handle(), device.handle());
+        let device = semaphores[0].semaphore.0.device.clone();
+        for op in semaphores.iter() {
+            assert_eq!(op.semaphore.0.device.handle(), device.handle());
         }
 
         blocking::unblock(move || {
             let raw_semaphores: [vk::Semaphore; N] =
-                semaphores.each_ref().map(|s| s.0 .0.semaphore);
-            let nums: [u64; N] = semaphores.each_ref().map(|s| s.1);
+                semaphores.each_ref().map(|s| s.semaphore.0.semaphore);
+            let nums: [u64; N] = semaphores.each_ref().map(|s| s.value);
 
             unsafe {
                 device.wait_semaphores(
@@ -113,9 +118,7 @@ impl TimelineSemaphore {
         })
     }
 
-    pub fn wait_many(
-        semaphores: Vec<TimelineStagedSemaphoreOp>,
-    ) -> impl Future<Output = VkResult<()>> {
+    pub fn wait_many(semaphores: Vec<TimelineSemaphoreOp>) -> impl Future<Output = VkResult<()>> {
         // Ensure that all semaphores have the same device
         let device = semaphores[0].semaphore.0.device.clone();
         for op in semaphores.iter() {
@@ -158,13 +161,23 @@ impl TimelineSemaphore {
     }
 }
 
-pub struct TimelineStagedSemaphoreOp {
+#[derive(Clone)]
+pub struct TimelineSemaphoreOp {
     pub semaphore: Arc<TimelineSemaphore>,
     pub value: u64,
 }
 
-impl TimelineStagedSemaphoreOp {
+impl TimelineSemaphoreOp {
     pub fn wait(self) -> impl Future<Output = VkResult<()>> + Unpin {
         self.semaphore.wait(self.value)
+    }
+    pub fn signal(&self) {
+        self.semaphore.signal(self.value);
+    }
+    pub fn downgrade_arc(self) -> SemaphoreOp {
+        SemaphoreOp {
+            value: self.value,
+            semaphore: self.semaphore.downgrade_arc(),
+        }
     }
 }
