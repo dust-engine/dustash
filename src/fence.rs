@@ -19,6 +19,9 @@ impl std::fmt::Debug for Fence {
     }
 }
 impl Fence {
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
     pub fn new(device: Arc<Device>, signaled: bool) -> VkResult<Self> {
         let mut flags = vk::FenceCreateFlags::empty();
         if signaled {

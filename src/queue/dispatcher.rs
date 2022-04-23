@@ -5,7 +5,7 @@ use std::sync::{
 
 use ash::{prelude::VkResult, vk};
 
-use crate::{command::recorder::CommandExecutable, fence::Fence, frames::AcquiredFrame, Device};
+use crate::{command::recorder::CommandExecutable, fence::Fence, Device};
 
 #[cfg(feature = "shared_command_pool")]
 use crate::command::shared_pool::SharedCommandPool;

@@ -68,9 +68,7 @@ impl FrameManager {
                     acquire_semaphore: Arc::new(
                         Semaphore::new(swapchain_loader.device().clone()).unwrap(),
                     ),
-                    complete_semaphore: Arc::new(
-                        Semaphore::new(swapchain_loader.device().clone()).unwrap(),
-                    ),
+                    complete_semaphore: Vec::new(),
                     generation: 0,
                 })
             })
@@ -220,10 +218,10 @@ impl FrameManager {
                                     .current_frame()
                                     .acquire_semaphore
                                     .clone(),
-                                render_complete_semaphore: self
-                                    .current_frame()
-                                    .complete_semaphore
-                                    .clone(),
+                                render_complete_semaphore_pool: std::mem::take(
+                                    &mut self.current_frame_mut().complete_semaphore,
+                                ),
+                                render_complete_semaphores: Vec::new(),
                                 complete_fence: self.current_frame().complete_fence.clone(),
                                 image: self.images[index as usize],
                                 present_queue_family: self.present_queue_family,
@@ -304,10 +302,16 @@ impl FrameManager {
     pub unsafe fn present(
         &mut self,
         present_queue: vk::Queue,
-        frame: AcquiredFrame,
+        mut frame: AcquiredFrame,
     ) -> VkResult<()> {
-        let span = tracing::info_span!("present", ?present_queue, semaphore = ?frame.render_complete_semaphore.semaphore, image_indice = ?frame.image_index);
+        let span =
+            tracing::info_span!("present", ?present_queue, image_indice = ?frame.image_index);
         let _enter = span.enter();
+        let semaphores: Vec<_> = frame
+            .render_complete_semaphores
+            .iter()
+            .map(|s| s.semaphore)
+            .collect();
         // frames.swapchain.is_some() is guaranteed to be true. frames.swapchain is only None on initialization, in which case we wouldn't have AcquiredFrame
         // Safety:
         // - Host access to queue must be externally synchronized. We have &mut self and thus ownership on present_queue.
@@ -316,13 +320,20 @@ impl FrameManager {
         // - Host access to pPresentInfo->pSwapchains[] must be externally synchronized. We have &mut frames, and thus ownership on frames.swapchain.
         let suboptimal = self.swapchain.as_mut().unwrap().queue_present(
             present_queue,
-            &[frame.render_complete_semaphore.semaphore],
+            &semaphores,
             frame.image_index,
         )?;
         if suboptimal {
             tracing::warn!("suboptimal");
             self.needs_rebuild = true;
         }
+
+        self.frames[frame.frame_index]
+            .complete_semaphore
+            .append(&mut frame.render_complete_semaphore_pool);
+        self.frames[frame.frame_index]
+            .complete_semaphore
+            .append(&mut frame.render_complete_semaphores);
         Ok(())
     }
 }
@@ -363,11 +374,11 @@ impl Default for Options {
 struct Frame {
     complete_fence: Arc<Fence>,
     acquire_semaphore: Arc<Semaphore>,
-    complete_semaphore: Arc<Semaphore>,
+    complete_semaphore: Vec<Arc<Semaphore>>,
     generation: u64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct AcquiredFrame {
     /// Queue family to present on
     pub present_queue_family: u32,
@@ -381,7 +392,8 @@ pub struct AcquiredFrame {
     pub acquire_ready_semaphore: Arc<Semaphore>,
 
     /// Must be signaled when access is complete
-    pub render_complete_semaphore: Arc<Semaphore>,
+    render_complete_semaphore_pool: Vec<Arc<Semaphore>>,
+    render_complete_semaphores: Vec<Arc<Semaphore>>,
 
     /// Must be signaled when access to the image associated with `image_index` and any per-frame
     /// resources associated with `frame_index` is complete
@@ -392,6 +404,20 @@ pub struct AcquiredFrame {
     /// If true, the image contained in this frame is different from previous frames.
     /// The application must re-record any command buffers
     pub invalidate_images: bool,
+}
+
+impl AcquiredFrame {
+    pub fn render_complete_semaphore(&mut self) -> Arc<Semaphore> {
+        let semaphore = self
+            .render_complete_semaphore_pool
+            .pop()
+            .unwrap_or_else(|| {
+                let semaphore = Semaphore::new(self.complete_fence.device().clone()).unwrap();
+                Arc::new(semaphore)
+            });
+        self.render_complete_semaphores.push(semaphore.clone());
+        semaphore
+    }
 }
 
 impl HasImage for AcquiredFrame {

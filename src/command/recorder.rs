@@ -1,7 +1,4 @@
-use ash::{
-    prelude::VkResult,
-    vk::{self, CommandBufferResetFlags},
-};
+use ash::{prelude::VkResult, vk};
 
 use crate::resources::{buffer::HasBuffer, HasImage};
 
