@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use crate::{
     command::recorder::{CommandBufferBuilder, CommandExecutable, CommandRecorder},
-    queue::{semaphore::TimelineSemaphore, QueueIndex, Queues, SemaphoreOp, StagedSemaphoreOp},
+    queue::{
+        semaphore::{TimelineSemaphore, TimelineSemaphoreOp},
+        QueueIndex, Queues, SemaphoreOp, StagedSemaphoreOp,
+    },
 };
 use ash::vk;
 
@@ -12,7 +15,7 @@ use super::GPUFuture;
 pub struct CommandsFuture<'q> {
     queues: &'q Queues,
     pub(crate) queue: QueueIndex,
-    pub(crate) available_semaphore_pool: Vec<SemaphoreOp>,
+    pub(crate) available_semaphore_pool: Vec<TimelineSemaphoreOp>,
     pub(crate) semaphore_waits: Vec<StagedSemaphoreOp>,
     pub(crate) cmd_execs: Vec<Arc<CommandExecutable>>,
     pub(crate) semaphore_signals: Vec<StagedSemaphoreOp>,
@@ -33,19 +36,19 @@ impl Drop for CommandsFuture<'_> {
     }
 }
 impl<'q> CommandsFuture<'q> {
-    fn pop_semaphore_pool(&mut self) -> SemaphoreOp {
+    fn pop_semaphore_pool(&mut self) -> TimelineSemaphoreOp {
         self.available_semaphore_pool.pop().unwrap_or_else(|| {
             let semaphore =
                 TimelineSemaphore::new(self.queues.of_index(self.queue).device().clone(), 0)
                     .unwrap();
             let semaphore = Arc::new(semaphore);
-            SemaphoreOp {
-                semaphore: semaphore.downgrade_arc(),
+            TimelineSemaphoreOp {
+                semaphore: semaphore,
                 value: 1,
             }
         })
     }
-    fn push_semaphore_pool(&mut self, semaphore: SemaphoreOp) {
+    fn push_semaphore_pool(&mut self, semaphore: TimelineSemaphoreOp) {
         self.available_semaphore_pool.push(semaphore);
     }
 
@@ -82,10 +85,10 @@ pub struct CommandsStageFuture<'q, 'a> {
 }
 
 impl<'q, 'a> GPUFuture for CommandsStageFuture<'q, 'a> {
-    fn pop_semaphore_pool(&mut self) -> SemaphoreOp {
+    fn pop_semaphore_pool(&mut self) -> TimelineSemaphoreOp {
         self.commands_future.pop_semaphore_pool()
     }
-    fn push_semaphore_pool(&mut self, semaphore: SemaphoreOp) {
+    fn push_semaphore_pool(&mut self, semaphore: TimelineSemaphoreOp) {
         self.commands_future.push_semaphore_pool(semaphore)
     }
     fn wait_semaphore(&mut self, semaphore: SemaphoreOp) {
@@ -100,12 +103,12 @@ impl<'q, 'a> GPUFuture for CommandsStageFuture<'q, 'a> {
     }
 
     /// Returns one signaled semaphore.
-    fn get_one_signaled_semaphore(&self) -> Option<SemaphoreOp> {
+    fn get_one_signaled_semaphore(&self) -> Option<TimelineSemaphoreOp> {
         self.commands_future
             .semaphore_signals
             .iter()
             .find(|&s| s.is_timeline() && s.stage_mask == self.stage)
-            .map(|s| s.clone().stageless())
+            .map(|s| s.clone().stageless().as_timeline())
     }
 
     type NextFuture = &'a mut CommandsFuture<'q>;

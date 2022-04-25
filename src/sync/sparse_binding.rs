@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
-use crate::queue::{semaphore::TimelineSemaphore, QueueIndex, Queues, SemaphoreOp};
+use crate::queue::{
+    semaphore::{TimelineSemaphore, TimelineSemaphoreOp},
+    QueueIndex, Queues, SemaphoreOp,
+};
 use ash::vk;
 
 use super::GPUFuture;
 pub struct SparseBindingFuture<'q> {
     queues: &'q Queues,
     pub(crate) queue: QueueIndex,
-    pub(crate) available_semaphore_pool: Vec<SemaphoreOp>,
+    pub(crate) available_semaphore_pool: Vec<TimelineSemaphoreOp>,
     pub(crate) semaphore_waits: Vec<SemaphoreOp>,
     pub(crate) semaphore_signals: Vec<SemaphoreOp>,
 
@@ -17,19 +20,19 @@ pub struct SparseBindingFuture<'q> {
 }
 
 impl<'q> GPUFuture for SparseBindingFuture<'q> {
-    fn pop_semaphore_pool(&mut self) -> SemaphoreOp {
+    fn pop_semaphore_pool(&mut self) -> TimelineSemaphoreOp {
         self.available_semaphore_pool.pop().unwrap_or_else(|| {
             let semaphore =
                 TimelineSemaphore::new(self.queues.of_index(self.queue).device().clone(), 0)
                     .unwrap();
             let semaphore = Arc::new(semaphore);
-            SemaphoreOp {
-                semaphore: semaphore.downgrade_arc(),
+            TimelineSemaphoreOp {
+                semaphore: semaphore,
                 value: 1,
             }
         })
     }
-    fn push_semaphore_pool(&mut self, semaphore: SemaphoreOp) {
+    fn push_semaphore_pool(&mut self, semaphore: TimelineSemaphoreOp) {
         self.available_semaphore_pool.push(semaphore);
     }
     fn wait_semaphore(&mut self, semaphore: SemaphoreOp) {
@@ -40,11 +43,11 @@ impl<'q> GPUFuture for SparseBindingFuture<'q> {
     }
 
     /// Returns one signaled semaphore.
-    fn get_one_signaled_semaphore(&self) -> Option<SemaphoreOp> {
+    fn get_one_signaled_semaphore(&self) -> Option<TimelineSemaphoreOp> {
         self.semaphore_signals
             .iter()
             .find(|&s| s.is_timeline())
-            .map(|s| s.clone())
+            .map(|s| s.clone().as_timeline())
     }
 
     type NextFuture = SparseBindingFuture<'q>;

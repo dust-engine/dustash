@@ -15,7 +15,7 @@ use super::GPUFuture;
 #[must_use]
 pub struct HostFuture<T: Future> {
     device: Arc<Device>,
-    pub(crate) available_semaphore_pool: Vec<SemaphoreOp>,
+    pub(crate) available_semaphore_pool: Vec<TimelineSemaphoreOp>,
     pub(crate) semaphore_waits: Vec<TimelineSemaphoreOp>,
     pub(crate) semaphore_signals: Vec<TimelineSemaphoreOp>,
 
@@ -32,10 +32,10 @@ impl<T: Future> IntoFuture for HostFuture<T> {
         let waits = take(&mut self.semaphore_waits);
         let signals = take(&mut self.semaphore_signals);
         async {
-            TimelineSemaphore::wait_many(waits).await.unwrap();
+            TimelineSemaphoreOp::wait_many(waits).await.unwrap();
             future.await;
             for signal in signals {
-                signal.signal();
+                signal.signal().unwrap();
             }
         }
     }
@@ -44,18 +44,18 @@ impl<T: Future> IntoFuture for HostFuture<T> {
 impl<T: Future> GPUFuture for HostFuture<T> {
     type NextFuture = Self;
 
-    fn pop_semaphore_pool(&mut self) -> SemaphoreOp {
+    fn pop_semaphore_pool(&mut self) -> TimelineSemaphoreOp {
         self.available_semaphore_pool.pop().unwrap_or_else(|| {
             let semaphore = TimelineSemaphore::new(self.device.clone(), 0).unwrap();
             let semaphore = Arc::new(semaphore);
-            SemaphoreOp {
-                semaphore: semaphore.downgrade_arc(),
+            TimelineSemaphoreOp {
+                semaphore: semaphore,
                 value: 1,
             }
         })
     }
 
-    fn push_semaphore_pool(&mut self, semaphore: SemaphoreOp) {
+    fn push_semaphore_pool(&mut self, semaphore: TimelineSemaphoreOp) {
         self.available_semaphore_pool.push(semaphore);
     }
 
@@ -69,10 +69,8 @@ impl<T: Future> GPUFuture for HostFuture<T> {
         self.semaphore_signals.push(semaphore.as_timeline());
     }
 
-    fn get_one_signaled_semaphore(&self) -> Option<SemaphoreOp> {
-        self.semaphore_signals
-            .get(0)
-            .map(|s| s.clone().downgrade_arc())
+    fn get_one_signaled_semaphore(&self) -> Option<TimelineSemaphoreOp> {
+        self.semaphore_signals.get(0).map(|s| s.clone())
     }
 
     fn next_future(self) -> Self::NextFuture {

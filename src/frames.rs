@@ -1,5 +1,4 @@
-use crate::fence::Fence;
-use crate::queue::semaphore::Semaphore;
+use crate::queue::semaphore::{Semaphore, TimelineSemaphoreOp};
 use crate::queue::{QueueType, QueuesCreateInfo};
 use crate::Device;
 use crate::{resources::HasImage, swapchain::Swapchain};
@@ -64,12 +63,12 @@ impl FrameManager {
         let frames = (0..options.frames_in_flight)
             .map(|_| {
                 Ok(Frame {
-                    complete_fence: Arc::new(Fence::new(swapchain_loader.device().clone(), true)?),
                     acquire_semaphore: Arc::new(
                         Semaphore::new(swapchain_loader.device().clone()).unwrap(),
                     ),
                     complete_semaphore: Vec::new(),
                     generation: 0,
+                    complete_timeline_semaphore: Vec::new(),
                 })
             })
             .collect::<VkResult<Vec<Frame>>>()?;
@@ -172,13 +171,12 @@ impl FrameManager {
 
         let next_frame_index = (self.frame_index + 1) % self.frames.len();
         unsafe {
-            self.device().wait_for_fences(
-                &[self.current_frame().complete_fence.fence],
-                true,
-                timeout_ns,
-            )?;
-            self.device()
-                .reset_fences(&[self.current_frame().complete_fence.fence])?;
+            let semaphore_refs: Vec<_> = self
+                .current_frame()
+                .complete_timeline_semaphore
+                .iter()
+                .collect();
+            TimelineSemaphoreOp::block_many(semaphore_refs.as_slice()).unwrap();
             // self.current_frame() has finished rendering
             while let Some(&(swapchain, generation)) = self.old_swapchains.front() {
                 if self.frames[next_frame_index].generation == generation {
@@ -222,7 +220,6 @@ impl FrameManager {
                                     &mut self.current_frame_mut().complete_semaphore,
                                 ),
                                 render_complete_semaphores: Vec::new(),
-                                complete_fence: self.current_frame().complete_fence.clone(),
                                 image: self.images[index as usize],
                                 present_queue_family: self.present_queue_family,
                                 invalidate_images,
@@ -310,7 +307,7 @@ impl FrameManager {
         let semaphores: Vec<_> = frame
             .render_complete_semaphores
             .iter()
-            .map(|s| s.semaphore)
+            .map(|s| s.0.semaphore)
             .collect();
         // frames.swapchain.is_some() is guaranteed to be true. frames.swapchain is only None on initialization, in which case we wouldn't have AcquiredFrame
         // Safety:
@@ -328,12 +325,20 @@ impl FrameManager {
             self.needs_rebuild = true;
         }
 
+        let (mut render_complete_semaphores, mut render_complete_timeline_semaphores) =
+            frame.render_complete_semaphores.into_iter().unzip();
+        // Recycle unused binary semaphores.
         self.frames[frame.frame_index]
             .complete_semaphore
             .append(&mut frame.render_complete_semaphore_pool);
+        // Recycle used binary semaphores.
         self.frames[frame.frame_index]
             .complete_semaphore
-            .append(&mut frame.render_complete_semaphores);
+            .append(&mut render_complete_semaphores);
+        // Record timeline semaphores to wait
+        self.frames[frame.frame_index]
+            .complete_timeline_semaphore
+            .append(&mut render_complete_timeline_semaphores);
         Ok(())
     }
 }
@@ -372,9 +377,9 @@ impl Default for Options {
 }
 
 struct Frame {
-    complete_fence: Arc<Fence>,
     acquire_semaphore: Arc<Semaphore>,
     complete_semaphore: Vec<Arc<Semaphore>>,
+    complete_timeline_semaphore: Vec<TimelineSemaphoreOp>,
     generation: u64,
 }
 
@@ -391,13 +396,12 @@ pub struct AcquiredFrame {
     /// Must be waited on before accessing the image associated with `image_index`
     pub acquire_ready_semaphore: Arc<Semaphore>,
 
-    /// Must be signaled when access is complete
+    /// List of available binary semaphores reused from previous frames.
     render_complete_semaphore_pool: Vec<Arc<Semaphore>>,
-    render_complete_semaphores: Vec<Arc<Semaphore>>,
 
-    /// Must be signaled when access to the image associated with `image_index` and any per-frame
-    /// resources associated with `frame_index` is complete
-    pub complete_fence: Arc<Fence>,
+    /// List of binary semaphores to be awaited by vkQueuePresent.
+    /// List of timeline semaphores signaled when rendering to swapchain is completed.
+    pub(crate) render_complete_semaphores: Vec<(Arc<Semaphore>, TimelineSemaphoreOp)>,
 
     pub image: vk::Image, // Always valid, since we retain a reference to the swapchain
 
@@ -407,15 +411,15 @@ pub struct AcquiredFrame {
 }
 
 impl AcquiredFrame {
-    pub fn render_complete_semaphore(&mut self) -> Arc<Semaphore> {
+    pub fn get_render_complete_semaphore(&mut self) -> Arc<Semaphore> {
         let semaphore = self
             .render_complete_semaphore_pool
             .pop()
             .unwrap_or_else(|| {
-                let semaphore = Semaphore::new(self.complete_fence.device().clone()).unwrap();
+                let semaphore =
+                    Semaphore::new(self.acquire_ready_semaphore.device.clone()).unwrap();
                 Arc::new(semaphore)
             });
-        self.render_complete_semaphores.push(semaphore.clone());
         semaphore
     }
 }

@@ -42,6 +42,12 @@ impl Drop for Semaphore {
 #[repr(transparent)]
 pub struct TimelineSemaphore(Semaphore);
 
+impl std::fmt::Debug for TimelineSemaphore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("TimelineSemaphore({:?})", self.0.semaphore))
+    }
+}
+
 impl TimelineSemaphore {
     pub fn new(device: Arc<Device>, initial_value: u64) -> VkResult<Self> {
         let type_info = vk::SemaphoreTypeCreateInfo::builder()
@@ -64,90 +70,29 @@ impl TimelineSemaphore {
             })
         }
     }
+    pub fn block(self: &TimelineSemaphore, value: u64) -> VkResult<()> {
+        unsafe {
+            self.0.device.wait_semaphores(
+                &vk::SemaphoreWaitInfo {
+                    semaphore_count: 1,
+                    p_semaphores: &self.0.semaphore,
+                    p_values: &value,
+                    ..Default::default()
+                },
+                std::u64::MAX,
+            )
+        }
+    }
     pub fn wait(
         self: Arc<TimelineSemaphore>,
         value: u64,
     ) -> impl Future<Output = VkResult<()>> + Send + Sync {
         blocking::unblock(move || {
-            let value_this = value;
-            let semaphore_this = self.0.semaphore;
-            unsafe {
-                self.0.device.wait_semaphores(
-                    &vk::SemaphoreWaitInfo {
-                        semaphore_count: 1,
-                        p_semaphores: &semaphore_this,
-                        p_values: &value_this,
-                        ..Default::default()
-                    },
-                    std::u64::MAX,
-                )?;
-            }
+            self.block(value)?;
             drop(self);
             Ok(())
         })
     }
-
-    pub fn wait_n<const N: usize>(
-        semaphores: [TimelineSemaphoreOp; N],
-    ) -> impl Future<Output = VkResult<()>> {
-        // Ensure that all semaphores have the same device
-        let device = semaphores[0].semaphore.0.device.clone();
-        for op in semaphores.iter() {
-            assert_eq!(op.semaphore.0.device.handle(), device.handle());
-        }
-
-        blocking::unblock(move || {
-            let raw_semaphores: [vk::Semaphore; N] =
-                semaphores.each_ref().map(|s| s.semaphore.0.semaphore);
-            let nums: [u64; N] = semaphores.each_ref().map(|s| s.value);
-
-            unsafe {
-                device.wait_semaphores(
-                    &vk::SemaphoreWaitInfo {
-                        semaphore_count: N.try_into().unwrap(),
-                        p_semaphores: raw_semaphores.as_ptr(),
-                        p_values: nums.as_ptr(),
-                        ..Default::default()
-                    },
-                    std::u64::MAX,
-                )?;
-            }
-            drop(semaphores);
-            drop(device);
-            Ok(())
-        })
-    }
-
-    pub fn wait_many(semaphores: Vec<TimelineSemaphoreOp>) -> impl Future<Output = VkResult<()>> {
-        // Ensure that all semaphores have the same device
-        let device = semaphores[0].semaphore.0.device.clone();
-        for op in semaphores.iter() {
-            assert_eq!(op.semaphore.0.device.handle(), device.handle());
-        }
-
-        blocking::unblock(move || {
-            let (raw_semaphores, nums): (Vec<vk::Semaphore>, Vec<u64>) = semaphores
-                .iter()
-                .map(|op| (op.semaphore.0.semaphore, op.value))
-                .unzip();
-
-            unsafe {
-                device.wait_semaphores(
-                    &vk::SemaphoreWaitInfo {
-                        semaphore_count: raw_semaphores.len() as u32,
-                        p_semaphores: raw_semaphores.as_ptr(),
-                        p_values: nums.as_ptr(),
-                        ..Default::default()
-                    },
-                    std::u64::MAX,
-                )?;
-            }
-            drop(semaphores);
-            drop(device);
-            Ok(())
-        })
-    }
-
     /// Downgrade an Arc<TimelineSemaphore> into an Arc<Semaphore>.
     pub fn downgrade_arc(self: Arc<TimelineSemaphore>) -> Arc<Semaphore> {
         unsafe {
@@ -167,17 +112,98 @@ pub struct TimelineSemaphoreOp {
     pub value: u64,
 }
 
+impl std::fmt::Debug for TimelineSemaphoreOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "TimelineSemaphore({:?})[{}]",
+            self.semaphore.0.semaphore, self.value
+        ))
+    }
+}
+
 impl TimelineSemaphoreOp {
+    pub fn block(self) -> VkResult<()> {
+        self.semaphore.block(self.value)
+    }
     pub fn wait(self) -> impl Future<Output = VkResult<()>> + Unpin {
         self.semaphore.wait(self.value)
     }
-    pub fn signal(&self) {
-        self.semaphore.signal(self.value);
+
+    pub fn block_n<const N: usize>(semaphores: [&TimelineSemaphoreOp; N]) -> VkResult<()> {
+        let device = semaphores[0].semaphore.0.device.clone();
+        // Ensure that all semaphores have the same device
+        for op in semaphores.iter().skip(1) {
+            assert_eq!(op.semaphore.0.device.handle(), device.handle());
+        }
+        let semaphore_values = semaphores.map(|s| s.semaphore.0.semaphore);
+        let values = semaphores.map(|s| s.value);
+        unsafe {
+            device.wait_semaphores(
+                &vk::SemaphoreWaitInfo {
+                    semaphore_count: N as u32,
+                    p_semaphores: semaphore_values.as_ptr(),
+                    p_values: values.as_ptr(),
+                    ..Default::default()
+                },
+                std::u64::MAX,
+            )
+        }
+    }
+    pub fn wait_n<const N: usize>(
+        semaphores: [TimelineSemaphoreOp; N],
+    ) -> impl Future<Output = VkResult<()>> {
+        blocking::unblock(move || {
+            Self::block_n(semaphores.each_ref())?;
+            drop(semaphores);
+            Ok(())
+        })
+    }
+    pub fn block_many(semaphores: &[&TimelineSemaphoreOp]) -> VkResult<()> {
+        if semaphores.len() == 0 {
+            return Ok(());
+        }
+        let device = semaphores[0].semaphore.0.device.clone();
+        // Ensure that all semaphores have the same device
+        for op in semaphores.iter().skip(1) {
+            assert_eq!(op.semaphore.0.device.handle(), device.handle());
+        }
+        let semaphore_values: Vec<_> = semaphores.iter().map(|s| s.semaphore.0.semaphore).collect();
+        let values: Vec<_> = semaphores.iter().map(|s| s.value).collect();
+        unsafe {
+            device.wait_semaphores(
+                &vk::SemaphoreWaitInfo {
+                    semaphore_count: semaphore_values.len() as u32,
+                    p_semaphores: semaphore_values.as_ptr(),
+                    p_values: values.as_ptr(),
+                    ..Default::default()
+                },
+                std::u64::MAX,
+            )
+        }
+    }
+
+    pub fn wait_many(semaphores: Vec<TimelineSemaphoreOp>) -> impl Future<Output = VkResult<()>> {
+        // Ensure that all semaphores have the same device
+        blocking::unblock(move || {
+            let refs: Vec<_> = semaphores.iter().collect();
+            Self::block_many(&refs)?;
+            drop(semaphores);
+            Ok(())
+        })
+    }
+    pub fn signal(&self) -> VkResult<()> {
+        self.semaphore.signal(self.value)
     }
     pub fn downgrade_arc(self) -> SemaphoreOp {
         SemaphoreOp {
             value: self.value,
             semaphore: self.semaphore.downgrade_arc(),
+        }
+    }
+    pub fn increment(self) -> Self {
+        Self {
+            semaphore: self.semaphore,
+            value: self.value + 1,
         }
     }
 }
