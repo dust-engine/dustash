@@ -425,3 +425,58 @@ impl HasImage for AcquiredFrame {
         self.image
     }
 }
+
+pub trait PerFrameResource {
+    const PER_IMAGE: bool = false;
+}
+pub struct PerFrame<T: PerFrameResource> {
+    resources: Vec<Option<T>>,
+}
+
+impl<T: PerFrameResource> Default for PerFrame<T> {
+    fn default() -> Self {
+        Self {
+            resources: Vec::new(),
+        }
+    }
+}
+
+impl<T: PerFrameResource> PerFrame<T> {
+    pub fn get(&self, frame: &AcquiredFrame) -> Option<&T> {
+        if frame.invalidate_images {
+            return None;
+        }
+        let index = if T::PER_IMAGE {
+            frame.image_index as usize
+        } else {
+            frame.frame_index
+        };
+        self.resources.get(index).map_or(None, Option::as_ref)
+    }
+    pub fn get_mut(&mut self, frame: &AcquiredFrame) -> Option<&mut T> {
+        if frame.invalidate_images {
+            return None;
+        }
+        let index = if T::PER_IMAGE {
+            frame.image_index as usize
+        } else {
+            frame.frame_index
+        };
+        self.resources.get_mut(index).map_or(None, Option::as_mut)
+    }
+    pub fn get_or_else(&mut self, frame: &AcquiredFrame, f: impl FnOnce() -> T) -> &mut T {
+        let index = if T::PER_IMAGE {
+            frame.image_index as usize
+        } else {
+            frame.frame_index
+        };
+        if self.resources.len() <= index {
+            self.resources.resize_with(index + 1, || None);
+        }
+        let slot = &mut self.resources[index];
+        if frame.invalidate_images || slot.is_none() {
+            *slot = Some(f());
+        }
+        slot.as_mut().unwrap()
+    }
+}
