@@ -61,7 +61,7 @@ impl Queue {
     }
 
     /// # Safety
-    /// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkQueueSubmit.html
+    /// <https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkQueueSubmit.html>
     pub unsafe fn submit_raw(
         &mut self,
         submits: &[vk::SubmitInfo],
@@ -71,7 +71,7 @@ impl Queue {
     }
 
     /// # Safety
-    /// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkQueueSubmit.html
+    /// <https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkQueueSubmit.html>
     pub unsafe fn submit_raw2(
         &mut self,
         submits: &[vk::SubmitInfo2],

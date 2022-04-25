@@ -1,4 +1,4 @@
-//! Original algorithm obtained from https://github.com/Tobski/simple_vulkan_synchronization
+//! Original algorithm obtained from <https://github.com/Tobski/simple_vulkan_synchronization>
 //! # Simpler Vulkan Synchronization
 //! In an effort to make Vulkan synchronization more accessible, I created this
 //! stb-inspired single-header library in order to somewhat simplify the core

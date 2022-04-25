@@ -40,7 +40,7 @@ pub struct Swapchain {
 
 impl Swapchain {
     /// # Safety
-    /// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkCreateSwapchainKHR.html
+    /// <https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkCreateSwapchainKHR.html>
     pub unsafe fn create(
         loader: Arc<SwapchainLoader>,
         info: &vk::SwapchainCreateInfoKHR,
@@ -51,7 +51,7 @@ impl Swapchain {
     /// Returns (image_index, suboptimal)
     /// Semaphore must be binary semaphore
     /// # Safety
-    /// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkAcquireNextImageKHR.html
+    /// <https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkAcquireNextImageKHR.html>
     pub unsafe fn acquire_next_image(
         &self,
         timeout_ns: u64,

@@ -392,10 +392,10 @@ pub struct AcquiredFrame {
     /// Queue family to present on
     pub present_queue_family: u32,
 
-    /// Index of the image to write to in [`Swapchain::images`]
+    /// Index of the image to write to.
     pub image_index: u32,
     /// Index of the frame in flight, for use tracking your own per-frame resources, which may be
-    /// accessed immediately after [`Swapchain::acquire`] returns
+    /// accessed immediately after [`FrameManager::acquire`] returns
     pub frame_index: usize,
     /// Must be waited on before accessing the image associated with `image_index`
     pub acquire_ready_semaphore: Arc<Semaphore>,
