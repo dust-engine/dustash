@@ -31,6 +31,12 @@ pub struct QueueDispatcher {
     shared_command_pool: SharedCommandPool,
 }
 
+impl crate::HasDevice for QueueDispatcher {
+    fn device(&self) -> &Arc<Device> {
+        self.queue.device()
+    }
+}
+
 impl QueueDispatcher {
     pub fn new(queue: Queue, assigned_type: Option<QueueType>, index: QueueIndex) -> Self {
         QueueDispatcher {
@@ -38,17 +44,10 @@ impl QueueDispatcher {
             commands: crossbeam_queue::SegQueue::new(),
             command_count: AtomicUsize::new(0),
             #[cfg(feature = "shared_command_pool")]
-            shared_command_pool: SharedCommandPool {
-                device: queue.device.clone(),
-                pool: thread_local::ThreadLocal::new(),
-                queue_family_index: queue.family_index,
-            },
+            shared_command_pool: SharedCommandPool::new(&queue),
             queue,
             index,
         }
-    }
-    pub fn device(&self) -> &Arc<Device> {
-        self.queue.device()
     }
     pub fn shared_command_pool(&self) -> &SharedCommandPool {
         &self.shared_command_pool

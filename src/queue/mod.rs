@@ -14,11 +14,11 @@ use std::{
 pub struct Queue {
     pub(super) device: Arc<Device>,
     pub(super) queue: vk::Queue,
-    pub(super) family_index: u32,
+    family_index: u32,
 }
 
-impl Queue {
-    pub fn device(&self) -> &Arc<Device> {
+impl crate::HasDevice for Queue {
+    fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
@@ -27,6 +27,9 @@ impl Queue {
 /// so these Queue operations take a mutable reference. To perform queue operations safely from multiple
 /// threads, either Arc<Mutex<_>> or a threaded dispatcher would be required.
 impl Queue {
+    pub fn family_index(&self) -> u32 {
+        self.family_index
+    }
     /// A simple method to ubmit a number of independent CommandExecutables with a fence for host-size syncronization.
     /// The fence will be created and destroyed upon the completion of the job.
     #[must_use = "The submit future needs to be awaited so we can release resources upon queue completion."]

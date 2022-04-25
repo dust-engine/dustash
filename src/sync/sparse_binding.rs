@@ -7,6 +7,7 @@ use crate::queue::{
 use ash::vk;
 
 use super::GPUFuture;
+use crate::HasDevice;
 pub struct SparseBindingFuture<'q> {
     queues: &'q Queues,
     pub(crate) queue: QueueIndex,

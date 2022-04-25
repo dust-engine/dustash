@@ -3,6 +3,7 @@ use std::{alloc::Layout, sync::Arc};
 use crate::{resources::alloc::MemBuffer, shader::Shader};
 
 use super::pipeline::{RayTracingLoader, RayTracingPipeline};
+use crate::HasDevice;
 use ash::{prelude::VkResult, vk};
 
 pub struct SbtLayout {
@@ -179,7 +180,7 @@ impl SbtHandles {
         num_hitgroup: u32,
     ) -> VkResult<SbtHandles> {
         let total_num_groups = num_hitgroup + num_miss + num_callable + 1;
-        let rtx_properties = &loader.device().physical_device().properties().ray_tracing;
+        let rtx_properties = &loader.physical_device().properties().ray_tracing;
         let sbt_handles_host_vec = unsafe {
             loader
                 .get_ray_tracing_shader_group_handles(

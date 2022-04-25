@@ -12,6 +12,11 @@ pub struct Fence {
     device: Arc<Device>,
     pub(crate) fence: vk::Fence,
 }
+impl crate::HasDevice for Fence {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
 
 impl std::fmt::Debug for Fence {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -19,9 +24,6 @@ impl std::fmt::Debug for Fence {
     }
 }
 impl Fence {
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
     pub fn new(device: Arc<Device>, signaled: bool) -> VkResult<Self> {
         let mut flags = vk::FenceCreateFlags::empty();
         if signaled {

@@ -7,8 +7,14 @@ use crate::Device;
 use super::SemaphoreOp;
 
 pub struct Semaphore {
-    pub(crate) device: Arc<Device>,
+    device: Arc<Device>,
     pub(crate) semaphore: vk::Semaphore,
+}
+
+impl crate::HasDevice for Semaphore {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 impl std::fmt::Debug for Semaphore {
@@ -45,6 +51,12 @@ pub struct TimelineSemaphore(Semaphore);
 impl std::fmt::Debug for TimelineSemaphore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("TimelineSemaphore({:?})", self.0.semaphore))
+    }
+}
+
+impl crate::HasDevice for TimelineSemaphore {
+    fn device(&self) -> &Arc<Device> {
+        self.0.device()
     }
 }
 
@@ -99,10 +111,6 @@ impl TimelineSemaphore {
             // Safety: This relies on TimelineSemaphore being transmutable to Semaphore.
             std::mem::transmute(self)
         }
-    }
-
-    pub fn device(&self) -> &Arc<Device> {
-        &self.0.device
     }
 }
 

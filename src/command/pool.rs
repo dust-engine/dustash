@@ -4,9 +4,15 @@ use std::sync::{Arc, Mutex};
 use crate::Device;
 
 pub struct CommandPool {
-    pub(crate) device: Arc<Device>,
+    device: Arc<Device>,
     pub(crate) pool: Mutex<vk::CommandPool>,
     pub(crate) queue_family_index: u32,
+}
+
+impl crate::HasDevice for CommandPool {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 impl CommandPool {

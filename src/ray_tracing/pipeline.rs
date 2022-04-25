@@ -30,13 +30,15 @@ impl Deref for RayTracingLoader {
         &self.loader
     }
 }
+impl crate::HasDevice for RayTracingLoader {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
 impl RayTracingLoader {
     pub fn new(device: Arc<Device>) -> Self {
         let loader = khr::RayTracingPipeline::new(device.instance(), &device);
         Self { device, loader }
-    }
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
     }
 }
 

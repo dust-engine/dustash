@@ -10,6 +10,7 @@ use crate::{
 use ash::vk;
 
 use super::GPUFuture;
+use crate::HasDevice;
 
 // This is not a GPU Future because it doesn't represent a momemnt. It's a pipeline.
 pub struct CommandsFuture<'q> {

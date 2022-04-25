@@ -12,8 +12,8 @@ pub struct SwapchainLoader {
     device: Arc<Device>,
 }
 
-impl SwapchainLoader {
-    pub fn device(&self) -> &Arc<Device> {
+impl crate::HasDevice for SwapchainLoader {
+    fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }

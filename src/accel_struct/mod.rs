@@ -12,13 +12,16 @@ pub struct AccelerationStructureLoader {
     device: Arc<Device>,
     loader: khr::AccelerationStructure,
 }
+
+impl crate::HasDevice for AccelerationStructureLoader {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
 impl AccelerationStructureLoader {
     pub fn new(device: Arc<Device>) -> Self {
         let loader = khr::AccelerationStructure::new(device.instance(), &device);
         Self { device, loader }
-    }
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
     }
 }
 impl Deref for AccelerationStructureLoader {

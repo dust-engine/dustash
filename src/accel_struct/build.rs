@@ -10,6 +10,7 @@ use crate::{
     resources::alloc::{Allocator, BufferRequest},
 };
 
+use crate::HasDevice;
 use ash::vk;
 
 /// Builds many acceleration structures in batch.
@@ -554,7 +555,6 @@ impl AabbBlasBuilder {
                 &self.geometry_primitive_counts,
             );
             let scratch_buffer_alignment = loader
-                .device()
                 .physical_device()
                 .properties()
                 .acceleration_structure

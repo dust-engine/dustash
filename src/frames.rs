@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 
+use crate::HasDevice;
 use crate::{surface::Surface, swapchain::SwapchainLoader};
 
 /// Manages synchronizing and rebuilding a Vulkan swapchain
@@ -34,10 +35,13 @@ pub struct FrameManager {
     old_swapchains: VecDeque<(vk::SwapchainKHR, u64)>,
 }
 
-impl FrameManager {
-    pub fn device(&self) -> &Arc<Device> {
+impl crate::HasDevice for FrameManager {
+    fn device(&self) -> &Arc<Device> {
         self.swapchain_loader.device()
     }
+}
+
+impl FrameManager {
     pub fn num_images(&self) -> usize {
         self.images.len()
     }
@@ -133,7 +137,7 @@ impl FrameManager {
             .min(surface_capabilities.max_image_count)
             .max(surface_capabilities.min_image_count);
         let format = surface
-            .pick_format(swapchain_loader.device().physical_device(), options.usage)
+            .pick_format(swapchain_loader.physical_device(), options.usage)
             .unwrap()
             .ok_or(vk::Result::ERROR_OUT_OF_DATE_KHR)?;
 
@@ -416,8 +420,7 @@ impl AcquiredFrame {
             .render_complete_semaphore_pool
             .pop()
             .unwrap_or_else(|| {
-                let semaphore =
-                    Semaphore::new(self.acquire_ready_semaphore.device.clone()).unwrap();
+                let semaphore = Semaphore::new(self.device().clone()).unwrap();
                 Arc::new(semaphore)
             });
         semaphore
@@ -427,6 +430,11 @@ impl AcquiredFrame {
 impl HasImage for AcquiredFrame {
     fn raw_image(&self) -> vk::Image {
         self.image
+    }
+}
+impl crate::HasDevice for AcquiredFrame {
+    fn device(&self) -> &Arc<Device> {
+        self.acquire_ready_semaphore.device()
     }
 }
 

@@ -96,10 +96,7 @@ impl PhysicalDevice {
             self.instance
                 .create_device(self.physical_device, &create_info, None)?
         };
-        let device = Arc::new(Device {
-            physical_device: self,
-            device,
-        });
+        let device = Arc::new(Device::new(self, device));
 
         let queues = unsafe {
             // Safe because this is only called once per device.

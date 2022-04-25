@@ -91,6 +91,11 @@ pub struct Allocator {
     device: Arc<Device>,
     staging_strategy: StagingStrategy,
 }
+impl crate::HasDevice for Allocator {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
 impl Allocator {
     pub fn new(device: Arc<Device>) -> Self {
         use gpu_alloc::{Config, DeviceProperties, MemoryHeap, MemoryType};
@@ -153,10 +158,6 @@ impl Allocator {
             device,
             staging_strategy: strategy,
         }
-    }
-
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
     }
 
     pub fn allocate_memory(

@@ -3,6 +3,7 @@ use ash::{prelude::VkResult, vk};
 use crate::resources::{buffer::HasBuffer, HasImage};
 
 use super::pool::CommandBuffer;
+use crate::HasDevice;
 
 pub struct CommandBufferBuilder {
     command_buffer: CommandBuffer,
@@ -27,7 +28,7 @@ impl CommandExecutable {
         unsafe {
             self.command_buffer
                 .pool
-                .device
+                .device()
                 .reset_command_buffer(self.command_buffer.buffer, flags)
                 .unwrap();
         }
@@ -53,7 +54,7 @@ impl CommandBuffer {
             // - Host access to the VkCommandPool that commandBuffer was allocated from must be externally synchronized.
             // We have self and thus exclusive control on commandBuffer.
             // self.pool.pool is protected behind a mutex.
-            self.pool.device.begin_command_buffer(
+            self.pool.device().begin_command_buffer(
                 self.buffer,
                 &vk::CommandBufferBeginInfo::builder().flags(flags).build(),
             )?;
@@ -69,7 +70,7 @@ impl CommandBuffer {
 impl CommandBufferBuilder {
     pub fn record(&mut self, f: impl FnOnce(CommandRecorder)) {
         let recorder = CommandRecorder {
-            device: self.command_buffer.pool.device.as_ref(),
+            device: self.command_buffer.pool.device().as_ref(),
             command_buffer: self.command_buffer.buffer,
             referenced_resources: &mut self.resource_guards,
         };
@@ -82,7 +83,7 @@ impl CommandBufferBuilder {
             let pool = self.command_buffer.pool.pool.lock().unwrap();
             self.command_buffer
                 .pool
-                .device
+                .device()
                 .end_command_buffer(self.command_buffer.buffer)?;
             drop(pool);
             let exec = CommandExecutable {
