@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use crate::{
-    command::recorder::{CommandBufferBuilder, CommandExecutable, CommandRecorder},
+    command::{
+        recorder::{CommandBufferBuilder, CommandExecutable, CommandRecorder},
+        sync2::PipelineBarrier,
+    },
     queue::{
         semaphore::{TimelineSemaphore, TimelineSemaphoreOp},
         QueueIndex, Queues, SemaphoreOp, StagedSemaphoreOp,
@@ -37,6 +40,17 @@ impl Drop for CommandsFuture<'_> {
     }
 }
 impl<'q> CommandsFuture<'q> {
+    pub fn new(queues: &'q Queues, queue: QueueIndex) -> Self {
+        Self {
+            queues,
+            semaphore_signals: Vec::new(),
+            semaphore_waits: Vec::new(),
+            queue,
+            cmd_execs: Vec::new(),
+            available_semaphore_pool: Vec::new(),
+            recording_cmd_buf: None,
+        }
+    }
     fn pop_semaphore_pool(&mut self) -> TimelineSemaphoreOp {
         self.available_semaphore_pool.pop().unwrap_or_else(|| {
             let semaphore =
@@ -53,12 +67,12 @@ impl<'q> CommandsFuture<'q> {
         self.available_semaphore_pool.push(semaphore);
     }
 
-    pub fn then_command_exec(mut self, command_exec: Arc<CommandExecutable>) -> Self {
+    pub fn then_command_exec(&mut self, command_exec: Arc<CommandExecutable>) -> &mut Self {
         self.cmd_execs.push(command_exec);
         self
     }
 
-    pub fn then_commands(mut self, f: impl FnOnce(CommandRecorder)) -> Self {
+    pub fn then_commands(&mut self, f: impl FnOnce(CommandRecorder)) -> &mut Self {
         let mut recording_buffer = self.recording_cmd_buf.take().unwrap_or_else(|| {
             let buf = self
                 .queues
@@ -79,7 +93,15 @@ impl<'q> CommandsFuture<'q> {
             self.cmd_execs.push(Arc::new(exec));
         }
     }
+
+    pub fn stage<'a>(&'a mut self, stage: vk::PipelineStageFlags2) -> CommandsStageFuture<'q, 'a> {
+        CommandsStageFuture {
+            commands_future: self,
+            stage,
+        }
+    }
 }
+
 pub struct CommandsStageFuture<'q, 'a> {
     commands_future: &'a mut CommandsFuture<'q>,
     stage: vk::PipelineStageFlags2,
@@ -119,23 +141,26 @@ impl<'q, 'a> GPUFuture for CommandsStageFuture<'q, 'a> {
     }
 }
 
-impl<'q> CommandsFuture<'q> {
-    pub fn new(queues: &'q Queues, queue: QueueIndex, execs: Vec<Arc<CommandExecutable>>) -> Self {
-        Self {
-            queues,
-            semaphore_signals: Vec::new(),
-            semaphore_waits: Vec::new(),
-            queue,
-            cmd_execs: execs,
-            available_semaphore_pool: Vec::new(),
-            recording_cmd_buf: None,
+impl<'q, 'a> CommandsStageFuture<'q, 'a> {
+    // A.stage(x).then_queue_transfer()
+    pub fn then_queue_transfer(
+        mut self,
+        new_queue: QueueIndex,
+        barrier: &PipelineBarrier,
+        stage: vk::PipelineStageFlags2,
+    ) -> &'a mut CommandsFuture<'q> {
+        if self.commands_future.queue == new_queue {
+            return self.commands_future;
         }
-    }
-    pub fn stage<'a>(&'a mut self, stage: vk::PipelineStageFlags2) -> CommandsStageFuture<'q, 'a> {
-        CommandsStageFuture {
-            commands_future: self,
-            stage,
-        }
+        self.commands_future.then_commands(|mut recorder| {
+            recorder.simple_pipeline_barrier2(barrier);
+        });
+        let mut future = CommandsFuture::new(self.commands_future.queues, new_queue); // The future on the new queue
+        self.then(future.stage(stage));
+        std::mem::swap(&mut future, self.commands_future);
+        // future is now the old future.
+        drop(future);
+        self.commands_future
     }
 }
 
@@ -148,10 +173,10 @@ mod tests {
     #[test]
     fn test_commands_to_commands_split() {
         let queues = q();
-        let mut task1 = CommandsFuture::new(&queues, QueueIndex(0), vec![]);
-        let mut task2 = CommandsFuture::new(&queues, QueueIndex(0), vec![]);
-        let mut task3 = CommandsFuture::new(&queues, QueueIndex(0), vec![]);
-        let mut task4 = CommandsFuture::new(&queues, QueueIndex(0), vec![]);
+        let mut task1 = CommandsFuture::new(&queues, QueueIndex(0));
+        let mut task2 = CommandsFuture::new(&queues, QueueIndex(0));
+        let mut task3 = CommandsFuture::new(&queues, QueueIndex(0));
+        let mut task4 = CommandsFuture::new(&queues, QueueIndex(0));
 
         task1
             .stage(vk::PipelineStageFlags2::VERTEX_SHADER)
@@ -166,10 +191,10 @@ mod tests {
     #[test]
     fn test_commands_to_commands_join() {
         let queues = q();
-        let mut task1 = CommandsFuture::new(&queues, QueueIndex(0), vec![]);
-        let mut task2 = CommandsFuture::new(&queues, QueueIndex(0), vec![]);
-        let mut task3 = CommandsFuture::new(&queues, QueueIndex(0), vec![]);
-        let mut task4 = CommandsFuture::new(&queues, QueueIndex(0), vec![]);
+        let mut task1 = CommandsFuture::new(&queues, QueueIndex(0));
+        let mut task2 = CommandsFuture::new(&queues, QueueIndex(0));
+        let mut task3 = CommandsFuture::new(&queues, QueueIndex(0));
+        let mut task4 = CommandsFuture::new(&queues, QueueIndex(0));
 
         task1
             .stage(vk::PipelineStageFlags2::FRAGMENT_SHADER)
