@@ -2,11 +2,11 @@ use crate::queue;
 
 use super::{Device, Instance};
 use ash::{prelude::VkResult, vk};
+use core::ffi::{c_char, c_void};
 use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use core::ffi::{c_char, c_void};
 pub struct PhysicalDevice {
     instance: Arc<Instance>,
     physical_device: vk::PhysicalDevice,

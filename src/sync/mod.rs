@@ -22,11 +22,6 @@ pub use sparse_binding::SparseBindingFuture;
 ///
 /// [`DAG`]: https://en.wikipedia.org/wiki/Directed_acyclic_graph
 pub trait GPUFuture {
-    /// The return type of [`GPUFuture::then`].
-    type NextFuture;
-    /// The return value of [`GPUFuture::then`].
-    fn next_future(self) -> Self::NextFuture;
-
     /// FIXME: If a future joins two parents and produces one child, the child would only have one semaphore in its pool.
     /// Ideally the child should still have two.
     /// This requires us to distribute leftover semaphores in the pool among childrens when the parent was dropped.
@@ -43,11 +38,11 @@ pub trait GPUFuture {
     fn get_one_signaled_semaphore(&self) -> Option<TimelineSemaphoreOp>;
 
     /// After self finish execution, do `next`.
-    fn then<T: GPUFuture>(&mut self, mut next: T) -> T::NextFuture {
+    fn then<T: GPUFuture>(&mut self, mut next: T) -> T {
         // If self is already signalling a timeline semaphore, just have the next future wait on that.
         if let Some(existing) = self.get_one_signaled_semaphore() {
             next.wait_semaphore(existing.downgrade_arc());
-            return next.next_future();
+            return next;
         }
         // Dequeue or create a new timeline semaphore.
         let semaphore = self.pop_semaphore_pool();
@@ -57,7 +52,7 @@ pub trait GPUFuture {
         next.wait_semaphore(semaphore.clone().downgrade_arc());
         // The next future can potentially signal the incremented semaphore.
         next.push_semaphore_pool(semaphore.increment());
-        next.next_future()
+        next
     }
     /// After self finish execution, present to the swapchain.
     /// Note that this does not actually call [`ash::extensions::khr::Swapchain::queue_present`]. It merely adds an execution dependency between

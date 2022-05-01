@@ -42,8 +42,6 @@ impl<T: Future> IntoFuture for HostFuture<T> {
 }
 
 impl<T: Future> GPUFuture for HostFuture<T> {
-    type NextFuture = Self;
-
     fn pop_semaphore_pool(&mut self) -> TimelineSemaphoreOp {
         self.available_semaphore_pool.pop().unwrap_or_else(|| {
             let semaphore = TimelineSemaphore::new(self.device.clone(), 0).unwrap();
@@ -71,9 +69,5 @@ impl<T: Future> GPUFuture for HostFuture<T> {
 
     fn get_one_signaled_semaphore(&self) -> Option<TimelineSemaphoreOp> {
         self.semaphore_signals.get(0).map(|s| s.clone())
-    }
-
-    fn next_future(self) -> Self::NextFuture {
-        self
     }
 }

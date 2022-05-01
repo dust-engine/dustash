@@ -50,12 +50,6 @@ impl<'q> GPUFuture for SparseBindingFuture<'q> {
             .find(|&s| s.is_timeline())
             .map(|s| s.clone().as_timeline())
     }
-
-    type NextFuture = SparseBindingFuture<'q>;
-
-    fn next_future(self) -> Self::NextFuture {
-        self
-    }
 }
 
 impl<'q> SparseBindingFuture<'q> {

@@ -133,12 +133,6 @@ impl<'q, 'a> GPUFuture for CommandsStageFuture<'q, 'a> {
             .find(|&s| s.is_timeline() && s.stage_mask == self.stage)
             .map(|s| s.clone().stageless().as_timeline())
     }
-
-    type NextFuture = &'a mut CommandsFuture<'q>;
-
-    fn next_future(self) -> Self::NextFuture {
-        self.commands_future
-    }
 }
 
 impl<'q, 'a> CommandsStageFuture<'q, 'a> {
@@ -200,7 +194,8 @@ mod tests {
             .then(task2.stage(vk::PipelineStageFlags2::FRAGMENT_SHADER));
         task1
             .stage(vk::PipelineStageFlags2::FRAGMENT_SHADER)
-            .then(task3.stage(vk::PipelineStageFlags2::FRAGMENT_SHADER))
+            .then(task3.stage(vk::PipelineStageFlags2::FRAGMENT_SHADER));
+        task1
             .stage(vk::PipelineStageFlags2::FRAGMENT_DENSITY_PROCESS_EXT)
             .then(task4.stage(vk::PipelineStageFlags2::COMPUTE_SHADER));
     }
