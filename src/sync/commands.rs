@@ -142,14 +142,27 @@ impl<'q, 'a> GPUFuture for CommandsStageFuture<'q, 'a> {
 }
 
 impl<'q, 'a> CommandsStageFuture<'q, 'a> {
-    // A.stage(x).then_queue_transfer()
+    /// Specify a new queue for execution.
+    /// When the new queue and the old queue has the same queue family, this does nothing.
+    /// `stage`: This stage in following commands will be blocked by the
+    /// pipeline barrier until the queue transfer is complete.
     pub fn then_queue_transfer(
         mut self,
         new_queue: QueueIndex,
         barrier: &PipelineBarrier,
         stage: vk::PipelineStageFlags2,
     ) -> &'a mut CommandsFuture<'q> {
-        if self.commands_future.queue == new_queue {
+        let old_index = self
+            .commands_future
+            .queues
+            .of_index(self.commands_future.queue)
+            .family_index();
+        let new_index = self
+            .commands_future
+            .queues
+            .of_index(new_queue)
+            .family_index();
+        if old_index == new_index {
             return self.commands_future;
         }
         self.commands_future.then_commands(|mut recorder| {
@@ -160,6 +173,10 @@ impl<'q, 'a> CommandsStageFuture<'q, 'a> {
         std::mem::swap(&mut future, self.commands_future);
         // future is now the old future.
         drop(future);
+
+        self.commands_future.then_commands(|mut recorder| {
+            recorder.simple_pipeline_barrier2(barrier);
+        });
         self.commands_future
     }
 }
