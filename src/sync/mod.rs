@@ -9,6 +9,7 @@ mod sparse_binding;
 mod swapchain;
 
 pub use commands::{CommandsFuture, CommandsStageFuture};
+pub use host::HostFuture;
 pub use sparse_binding::SparseBindingFuture;
 
 /// `GPUFuture` handles the execution dependencies between queue operations.
@@ -53,6 +54,19 @@ pub trait GPUFuture {
         // The next future can potentially signal the incremented semaphore.
         next.push_semaphore_pool(semaphore.increment());
         next
+    }
+
+    fn then_signal(&mut self) -> TimelineSemaphoreOp {
+        // If self is already signalling a timeline semaphore, just have the next future wait on that.
+        if let Some(existing) = self.get_one_signaled_semaphore() {
+            return existing;
+        }
+        // Dequeue or create a new timeline semaphore.
+        let semaphore = self.pop_semaphore_pool();
+        // Signal this new semaphore when self finish execution.
+        self.signal_semaphore(semaphore.clone().downgrade_arc());
+        return semaphore;
+        // TODO: when calling next on `self`, next should inherit and signal semaphore.increment().
     }
     /// After self finish execution, present to the swapchain.
     /// Note that this does not actually call [`ash::extensions::khr::Swapchain::queue_present`]. It merely adds an execution dependency between

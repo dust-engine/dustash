@@ -82,6 +82,9 @@ impl TimelineSemaphore {
             })
         }
     }
+    pub fn value(&self) -> VkResult<u64> {
+        unsafe { self.0.device.get_semaphore_counter_value(self.0.semaphore) }
+    }
     pub fn block(self: &TimelineSemaphore, value: u64) -> VkResult<()> {
         unsafe {
             self.0.device.wait_semaphores(
@@ -201,6 +204,10 @@ impl TimelineSemaphoreOp {
     }
     pub fn signal(&self) -> VkResult<()> {
         self.semaphore.signal(self.value)
+    }
+    pub fn finished(&self) -> VkResult<bool> {
+        let val = self.semaphore.value()?;
+        Ok(val >= self.value)
     }
     pub fn downgrade_arc(self) -> SemaphoreOp {
         SemaphoreOp {

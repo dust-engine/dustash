@@ -22,6 +22,18 @@ pub struct HostFuture<T: Future> {
     future: Option<T>,
 }
 
+impl<T: Future> HostFuture<T> {
+    pub fn new(device: Arc<Device>, future: T) -> Self {
+        Self {
+            device,
+            available_semaphore_pool: Vec::new(),
+            semaphore_signals: Vec::new(),
+            semaphore_waits: Vec::new(),
+            future: Some(future),
+        }
+    }
+}
+
 impl<T: Future> IntoFuture for HostFuture<T> {
     type Output = ();
     type IntoFuture = impl Future<Output = ()>;
