@@ -10,6 +10,7 @@ use crate::{command::recorder::CommandRecorder, Device};
 
 use super::buffer::HasBuffer;
 
+pub use gpu_alloc::MemoryPropertyFlags;
 pub use gpu_alloc::UsageFlags as MemoryUsageFlags;
 pub use vk::BufferUsageFlags;
 
@@ -221,6 +222,8 @@ impl Allocator {
                 memory: MaybeUninit::new(MemoryBlock(mem)),
                 buffer,
                 allocator: self.clone(),
+                size: request.size,
+                alignment: request.alignment,
             })
         }
     }
@@ -334,7 +337,7 @@ pub struct BufferRequest<'a> {
     /// The actual alignment used on the allocation is buffer_request.alignment.max(buffer_requirements.alignment).
     pub alignment: u64,
     pub usage: vk::BufferUsageFlags,
-    pub memory_usage: gpu_alloc::UsageFlags,
+    pub memory_usage: MemoryUsageFlags,
     pub sharing_mode: vk::SharingMode,
     pub queue_families: &'a [u32],
 }
@@ -355,6 +358,8 @@ pub struct MemBuffer {
     allocator: Arc<Allocator>,
     pub buffer: vk::Buffer,
     pub memory: MaybeUninit<MemoryBlock>,
+    size: u64,
+    alignment: u64,
 }
 
 impl HasBuffer for MemBuffer {
@@ -379,6 +384,13 @@ impl Drop for MemBuffer {
 }
 
 impl MemBuffer {
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
+    pub fn alignment(&self) -> u64 {
+        self.alignment
+    }
     /*
     pub fn set_debug_name_raw(&self, device: &ash::Device, debug_utils: &DebugUtils, name: &CStr) {
         unsafe {

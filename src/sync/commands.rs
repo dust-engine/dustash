@@ -51,6 +51,9 @@ impl<'q> CommandsFuture<'q> {
             recording_cmd_buf: None,
         }
     }
+    pub fn is_empty(&self) -> bool {
+        self.cmd_execs.len() == 0 && self.recording_cmd_buf.is_none()
+    }
     fn pop_semaphore_pool(&mut self) -> TimelineSemaphoreOp {
         self.available_semaphore_pool.pop().unwrap_or_else(|| {
             let semaphore =
