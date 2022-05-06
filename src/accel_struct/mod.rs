@@ -34,21 +34,8 @@ impl Deref for AccelerationStructureLoader {
 
 #[derive(Clone, Copy)]
 pub enum AccelerationStructureType {
-    TopLevel,
     BottomLevelAABBs,
     BottomLevelTriangles,
-}
-
-impl Into<vk::AccelerationStructureTypeKHR> for AccelerationStructureType {
-    fn into(self) -> vk::AccelerationStructureTypeKHR {
-        use AccelerationStructureType::*;
-        match self {
-            TopLevel => vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-            BottomLevelAABBs | BottomLevelTriangles => {
-                vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
-            }
-        }
-    }
 }
 
 impl Into<vk::GeometryTypeKHR> for AccelerationStructureType {

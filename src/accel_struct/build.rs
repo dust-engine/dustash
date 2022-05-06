@@ -2,6 +2,8 @@ use std::{mem::ManuallyDrop, ops::Range, sync::Arc};
 
 use super::AccelerationStructure;
 use super::AccelerationStructureLoader;
+use crate::resources::alloc::MemBuffer;
+use crate::sync::CommandsFuture;
 use crate::{
     command::{
         recorder::CommandRecorder,
@@ -32,107 +34,12 @@ impl AccelerationStructureBuilder {
         self.builds
             .push(item.build(self.loader.clone(), self.allocator.clone()))
     }
-    /// Must be called after all other BLAS builds
-    pub fn add_tlas(
-        &mut self,
-        instances: Box<[vk::AccelerationStructureInstanceKHR]>,
-        geometry_flags: vk::GeometryFlagsKHR,
-        tlas_flags: vk::BuildAccelerationStructureFlagsKHR,
-    ) {
-        let geometry = vk::AccelerationStructureGeometryKHR {
-            geometry_type: vk::GeometryTypeKHR::INSTANCES,
-            geometry: vk::AccelerationStructureGeometryDataKHR {
-                instances: vk::AccelerationStructureGeometryInstancesDataKHR {
-                    array_of_pointers: vk::FALSE,
-                    ..Default::default()
-                },
-            },
-            flags: geometry_flags,
-            ..Default::default()
-        };
-        let mut build_size = unsafe {
-            self.loader.get_acceleration_structure_build_sizes(
-                vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                &vk::AccelerationStructureBuildGeometryInfoKHR {
-                    ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-                    flags: tlas_flags,
-                    mode: vk::BuildAccelerationStructureModeKHR::BUILD,
-                    geometry_count: 1,
-                    p_geometries: &geometry,
-                    ..Default::default()
-                },
-                &[instances.len() as u32],
-            )
-        };
-
-        let scratch_buffer_alignment = self
-            .loader
-            .device()
-            .physical_device()
-            .properties()
-            .acceleration_structure
-            .min_acceleration_structure_scratch_offset_alignment;
-        build_size.build_scratch_size = build_size
-            .build_scratch_size
-            .next_multiple_of(scratch_buffer_alignment as u64);
-        let backing_buffer = self
-            .allocator
-            .allocate_buffer(BufferRequest {
-                size: build_size.acceleration_structure_size,
-                alignment: 0,
-                usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
-                memory_usage: gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
-                sharing_mode: vk::SharingMode::EXCLUSIVE,
-                queue_families: &[],
-            })
-            .unwrap();
-        let raw = unsafe {
-            self.loader
-                .create_acceleration_structure(
-                    &vk::AccelerationStructureCreateInfoKHR {
-                        buffer: backing_buffer.buffer,
-                        offset: 0,
-                        size: build_size.acceleration_structure_size,
-                        ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-                        ..Default::default()
-                    },
-                    None,
-                )
-                .unwrap()
-        };
-        let accel_struct = AccelerationStructure {
-            loader: self.loader.clone(),
-            raw,
-            primitives_buffer: None,
-            backing_buffer: ManuallyDrop::new(backing_buffer),
-            compacted: false,
-            flags: tlas_flags,
-            num_primitives: instances.len() as u64,
-            geometries_num_primitives: vec![instances.len() as u32],
-            ty: super::AccelerationStructureType::TopLevel,
-        };
-        let primitive_datasize =
-            std::mem::size_of_val(&instances as &[vk::AccelerationStructureInstanceKHR]);
-        self.builds.push(AccelerationStructureBuild {
-            accel_struct,
-            build_size,
-            ty: AccelerationStructureBuildType::Tlas {
-                instances,
-                geometry_flags,
-            },
-            primitive_datasize,
-        })
-    }
-    /// build on the device.
+    // build on the device.
     /// Instead of calling VkCmdBuildAccelerationStructure multiple times, it calls VkCmdBuildAccelerationStructure
     /// in batch mode, once for BLAS and once for TLAS, with a pipeline barrier inbetween.  
-    pub fn build(self, command_recorder: &mut CommandRecorder) -> Vec<Arc<AccelerationStructure>> {
+    pub fn build(self, commands_future: &mut CommandsFuture) -> Vec<Arc<AccelerationStructure>> {
         // Calculate the total number of geometries
-        let total_num_geometries = self
-            .builds
-            .iter()
-            .map(AccelerationStructureBuild::num_geometries)
-            .sum();
+        let total_num_geometries = self.builds.iter().map(|build| build.geometries.len()).sum();
         let mut geometries: Vec<vk::AccelerationStructureGeometryKHR> =
             Vec::with_capacity(total_num_geometries);
         let mut build_ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> =
@@ -147,22 +54,11 @@ impl AccelerationStructureBuilder {
             .properties()
             .acceleration_structure
             .min_acceleration_structure_scratch_offset_alignment;
-        // Create scratch buffers.
-        // BLAS builds can overlap, so they need to use different regions of the scratch buffers.
-        // TLAS builds always happen after all BLAS builds are finished, so it can reuse the scratch buffer.
-        let (scratch_buffer_tlas_total, scratch_buffer_blas_total): (u64, u64) = self
+        let scratch_buffer_total: u64 = self
             .builds
             .iter()
-            .fold((0_u64, 0_u64), |(tlas_total, blas_total), build| {
-                use super::AccelerationStructureType::*;
-                match build.accel_struct.ty {
-                    TopLevel => (tlas_total + build.build_size.build_scratch_size, blas_total),
-                    BottomLevelAABBs | BottomLevelTriangles => {
-                        (tlas_total, blas_total + build.build_size.build_scratch_size)
-                    }
-                }
-            });
-        let scratch_buffer_total = scratch_buffer_blas_total.max(scratch_buffer_tlas_total);
+            .map(|build| build.build_size.build_scratch_size)
+            .sum();
         let scratch_buffer = self
             .allocator
             .allocate_buffer(BufferRequest {
@@ -180,35 +76,8 @@ impl AccelerationStructureBuilder {
             .unwrap();
         let scratch_buffer_device_address = scratch_buffer.get_device_address();
 
-        // Write primitive data into a buffer.
-        let all_primitives_size = self
-            .builds
-            .iter()
-            .map(|build| build.primitive_datasize as usize)
-            .sum::<usize>();
-        let mut all_primitives_buffer = self
-            .allocator
-            .allocate_buffer(BufferRequest {
-                size: all_primitives_size as u64,
-                usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                memory_usage: gpu_alloc::UsageFlags::UPLOAD | gpu_alloc::UsageFlags::DEVICE_ADDRESS, // TODO: Is it faster to do this with a staging & device visible buffer?
-                ..Default::default()
-            })
-            .unwrap();
-        all_primitives_buffer.map_scoped(0, all_primitives_size, |mut buffer| {
-            // write primitive buffers for all builds
-            for build in self.builds.iter() {
-                buffer = build.write_primitive_buffer(buffer);
-            }
-            assert_eq!(buffer.len(), 0);
-        });
-
         // Create build infos
-        let primitives_buffer_device_address = all_primitives_buffer.get_device_address();
-        let mut current_primitives_buffer_device_address = primitives_buffer_device_address;
-        let mut current_blas_scratch_buffer_device_address = scratch_buffer_device_address;
-        let mut current_tlas_scratch_buffer_device_address = scratch_buffer_device_address;
+        let mut current_scratch_buffer_device_address = scratch_buffer_device_address;
 
         let build_infos = self
             .builds
@@ -220,226 +89,86 @@ impl AccelerationStructureBuilder {
                 });
 
                 // Add geometries
-                let geometry_range = match &as_build.ty {
-                    AccelerationStructureBuildType::BlasAabb {
-                        geometries: blas_geometries,
-                    } => {
-                        build_ranges.extend(
-                            as_build
-                                .accel_struct
-                                .geometries_num_primitives
-                                .iter()
-                                .map(|a| vk::AccelerationStructureBuildRangeInfoKHR {
-                                    primitive_count: *a,
-                                    primitive_offset: 0,
-                                    first_vertex: 0,
-                                    transform_offset: 0,
-                                }),
-                        );
+                build_ranges.extend(as_build.accel_struct.geometries_num_primitives.iter().map(
+                    |a| vk::AccelerationStructureBuildRangeInfoKHR {
+                        primitive_count: *a,
+                        primitive_offset: 0,
+                        first_vertex: 0,
+                        transform_offset: 0,
+                    },
+                ));
 
-                        let geometry_range: Range<usize> =
-                            geometries.len()..(geometries.len() + blas_geometries.len());
-                        // Insert geometries
-                        geometries.extend(
-                            aabbs_to_geometry_infos(blas_geometries).into_iter().map(
-                                |mut geometry_info: vk::AccelerationStructureGeometryKHR| unsafe {
-                                    let data_len = geometry_info.geometry.aabbs.data.device_address;
-                                    geometry_info.geometry.aabbs.data.device_address =
-                                        current_primitives_buffer_device_address;
-                                    current_primitives_buffer_device_address += data_len;
-                                    geometry_info
-                                },
-                            ),
-                        );
-                        geometry_range
-                    }
-                    AccelerationStructureBuildType::Tlas {
-                        instances,
-                        geometry_flags,
-                    } => {
-                        build_ranges.push(vk::AccelerationStructureBuildRangeInfoKHR {
-                            primitive_count: instances.len() as u32,
-                            primitive_offset: 0,
-                            first_vertex: 0,
-                            transform_offset: 0,
-                        });
-                        // Note: TLAS always only have one geometry.
-                        let geometry = vk::AccelerationStructureGeometryKHR {
-                            geometry_type: vk::GeometryTypeKHR::INSTANCES,
-                            geometry: vk::AccelerationStructureGeometryDataKHR {
-                                instances: vk::AccelerationStructureGeometryInstancesDataKHR {
-                                    array_of_pointers: vk::FALSE,
-                                    data: vk::DeviceOrHostAddressConstKHR {
-                                        device_address: {
-                                            let d = current_primitives_buffer_device_address;
-                                            let slice: &[vk::AccelerationStructureInstanceKHR] =
-                                                instances;
-                                            current_primitives_buffer_device_address +=
-                                                std::mem::size_of_val(slice) as u64;
-                                            d
-                                        },
-                                    },
-                                    ..Default::default()
-                                },
-                            },
-                            flags: *geometry_flags,
-                            ..Default::default()
-                        };
-                        let geometry_range: Range<usize> = geometries.len()..(geometries.len() + 1);
-                        geometries.push(geometry);
-                        geometry_range
-                    }
-                };
+                let geometry_range: Range<usize> =
+                    geometries.len()..(geometries.len() + as_build.geometries.len());
+                // Insert geometries
+                geometries.extend(aabbs_to_geometry_infos(&as_build.geometries));
                 vk::AccelerationStructureBuildGeometryInfoKHR {
-                    ty: as_build.accel_struct.ty.into(),
+                    ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
                     flags: as_build.accel_struct.flags,
                     mode: vk::BuildAccelerationStructureModeKHR::BUILD,
                     dst_acceleration_structure: as_build.accel_struct.raw,
-                    geometry_count: geometry_range.len() as u32,
+                    geometry_count: as_build.geometries.len() as u32,
                     p_geometries: unsafe { geometries.as_ptr().add(geometry_range.start) },
                     scratch_data: {
-                        use super::AccelerationStructureType::*;
-                        let current_scratch_address = match as_build.accel_struct.ty {
-                            TopLevel => &mut current_tlas_scratch_buffer_device_address,
-                            BottomLevelAABBs | BottomLevelTriangles => {
-                                &mut current_blas_scratch_buffer_device_address
-                            }
-                        };
                         let d = vk::DeviceOrHostAddressKHR {
-                            device_address: *current_scratch_address,
+                            device_address: current_scratch_buffer_device_address,
                         };
-                        *current_scratch_address += as_build.build_size.build_scratch_size;
+                        current_scratch_buffer_device_address +=
+                            as_build.build_size.build_scratch_size;
                         d
                     },
                     ..Default::default()
                 }
             })
             .collect::<Vec<_>>();
-        debug_assert_eq!(
-            current_primitives_buffer_device_address - primitives_buffer_device_address,
-            all_primitives_size as u64
-        );
 
         // Actually record the build commands
-        let (num_tlas, num_blas): (u32, u32) =
-            self.builds
-                .iter()
-                .fold((0_u32, 0_u32), |(tlas_total, blas_total), build| {
-                    use super::AccelerationStructureType::*;
-                    match build.accel_struct.ty {
-                        TopLevel => (tlas_total + 1, blas_total),
-                        BottomLevelAABBs | BottomLevelTriangles => (tlas_total, blas_total + 1),
-                    }
-                });
-        unsafe {
-            assert_eq!(build_infos.len(), build_range_ptrs.len());
-            // First, build the BLASs
-            if num_blas > 0 {
+        commands_future.then_commands(|recorder| {
+            unsafe {
+                assert_eq!(build_infos.len(), build_range_ptrs.len());
+                // First, build the BLASs
                 self.loader.fp().cmd_build_acceleration_structures_khr(
-                    command_recorder.command_buffer,
-                    num_blas as u32,
+                    recorder.command_buffer,
+                    build_infos.len() as u32,
                     build_infos.as_ptr(),
                     build_range_ptrs.as_ptr(),
                 );
             }
-            // Pipeline barrier between the two builds.
-            // This is necessarily because we assume taht the TLAS will contain some of the BLASs that we just built.
-            if num_blas > 0 && num_tlas > 0 {
-                command_recorder.simple_const_pipeline_barrier(&PipelineBarrierConst::new(
-                    Some(MemoryBarrier {
-                        prev_accesses: &[AccessType::AccelerationStructureBuildWriteKHR],
-                        next_accesses: &[AccessType::AccelerationStructureBuildReadKHR],
-                    }),
-                    &[],
-                    &[],
-                    vk::DependencyFlags::empty(),
-                ));
-            }
-            // Then, build the TLAS. INVARIANT: We assume that TLAS(s) are always placed after BLASs.
-            if num_tlas > 0 {
-                self.loader.fp().cmd_build_acceleration_structures_khr(
-                    command_recorder.command_buffer,
-                    num_tlas as u32,
-                    build_infos.as_ptr().add(num_tlas as usize),
-                    build_range_ptrs.as_ptr().add(num_tlas as usize),
-                );
-            }
-        }
 
-        // TODO: track the build state of acceleration structures.
-
-        // Finally, add the dependency data
-        let acceleration_structures = self
-            .builds
-            .into_iter()
-            .map(|build| Arc::new(build.accel_struct))
-            .collect::<Vec<_>>();
-        command_recorder.referenced_resources.extend(
+            // Finally, add the dependency data
+            recorder.referenced_resources.extend(
+                self.builds
+                    .iter()
+                    .flat_map(|build| build.geometries.iter().map(|g| g.0.clone()))
+                    .map(|arc| Box::new(arc) as Box<dyn Send + Sync>),
+            );
+            let acceleration_structures = self
+                .builds
+                .into_iter()
+                .map(|build| Arc::new(build.accel_struct))
+                .collect::<Vec<_>>();
+            recorder.referenced_resources.extend(
+                acceleration_structures
+                    .iter()
+                    .cloned()
+                    .map(|a| Box::new(a) as Box<dyn Send + Sync>),
+            );
+            recorder.referenced_resources.push(Box::new(scratch_buffer));
             acceleration_structures
-                .iter()
-                .cloned()
-                .map(|a| Box::new(a) as Box<dyn Send + Sync>),
-        );
-        command_recorder
-            .referenced_resources
-            .push(Box::new(scratch_buffer));
-        command_recorder
-            .referenced_resources
-            .push(Box::new(all_primitives_buffer));
-        acceleration_structures
+        })
     }
 }
 
 struct AccelerationStructureBuild {
     accel_struct: AccelerationStructure,
     build_size: vk::AccelerationStructureBuildSizesInfoKHR,
-    ty: AccelerationStructureBuildType,
+    geometries: Box<[(Arc<MemBuffer>, usize, vk::GeometryFlagsKHR)]>, // data, stride, flags
     primitive_datasize: usize,
-}
-enum AccelerationStructureBuildType {
-    BlasAabb {
-        geometries: Box<[(Box<[u8]>, usize, vk::GeometryFlagsKHR)]>, // data, stride, flags
-    },
-    Tlas {
-        instances: Box<[vk::AccelerationStructureInstanceKHR]>,
-        geometry_flags: vk::GeometryFlagsKHR,
-    },
-}
-impl AccelerationStructureBuild {
-    // Total number of geometries
-    fn num_geometries(&self) -> usize {
-        match &self.ty {
-            AccelerationStructureBuildType::BlasAabb { geometries } => geometries.len(),
-            AccelerationStructureBuildType::Tlas { .. } => 1,
-        }
-    }
-    /// Copy all geometry primitive buffers in this build into buf, returning the remaining buffer.
-    fn write_primitive_buffer<'s, 'a>(&'s self, buf: &'a mut [u8]) -> &'a mut [u8] {
-        fn fold_handler<'b>(buf: &'b mut [u8], geometry: &[u8]) -> &'b mut [u8] {
-            buf[0..geometry.len()].copy_from_slice(geometry);
-            &mut buf[geometry.len()..]
-        }
-        match &self.ty {
-            AccelerationStructureBuildType::BlasAabb { geometries } => geometries
-                .iter()
-                .map(|(data, _, _)| {
-                    let slice: &[u8] = data;
-                    slice
-                })
-                .fold(buf, fold_handler),
-            AccelerationStructureBuildType::Tlas { instances, .. } => unsafe {
-                let slice: &[vk::AccelerationStructureInstanceKHR] = instances;
-                let size = std::mem::size_of_val(slice);
-                let slice: &[u8] = std::slice::from_raw_parts(slice.as_ptr() as *const u8, size);
-                fold_handler(buf, slice)
-            },
-        }
-    }
 }
 
 /// Builds one AABB BLAS containing many geometries
 pub struct AabbBlasBuilder {
-    geometries: Vec<(Box<[u8]>, usize, vk::GeometryFlagsKHR)>, // data, stride, num_primitives, flags
+    geometries: Vec<(Arc<MemBuffer>, usize, vk::GeometryFlagsKHR)>, // data, stride, num_primitives, flags
     flags: vk::BuildAccelerationStructureFlagsKHR,
     num_primitives: u64,
     geometry_primitive_counts: Vec<u32>,
@@ -447,7 +176,7 @@ pub struct AabbBlasBuilder {
 }
 
 fn aabbs_to_geometry_infos(
-    geometries: &[(Box<[u8]>, usize, vk::GeometryFlagsKHR)],
+    geometries: &[(Arc<MemBuffer>, usize, vk::GeometryFlagsKHR)],
 ) -> impl IntoIterator<Item = vk::AccelerationStructureGeometryKHR> + '_ {
     geometries.iter().map(
         |(data, stride, flags)| vk::AccelerationStructureGeometryKHR {
@@ -455,7 +184,7 @@ fn aabbs_to_geometry_infos(
             geometry: vk::AccelerationStructureGeometryDataKHR {
                 aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
                     data: vk::DeviceOrHostAddressConstKHR {
-                        device_address: data.len() as u64,
+                        device_address: data.get_device_address(),
                     },
                     stride: *stride as u64,
                     ..Default::default()
@@ -478,11 +207,7 @@ impl AabbBlasBuilder {
         }
     }
     /// T: The type of the interleaved data.
-    pub fn add_geometry<T>(
-        &mut self,
-        primitives: Box<[(vk::AabbPositionsKHR, T)]>,
-        flags: vk::GeometryFlagsKHR,
-    ) {
+    pub fn add_geometry<T>(&mut self, primitives: Arc<MemBuffer>, flags: vk::GeometryFlagsKHR) {
         use std::alloc::Layout;
         // There might be two cases where vk::AabbPositionsKHR aren't layed out with a stride = 24
         // 1. The user wants to interleave some other metadata between vk::AabbPositionsKHR.
@@ -507,17 +232,11 @@ impl AabbBlasBuilder {
             debug_assert!(stride % 8 == 0);
             stride
         };
-        let num_primitives = primitives.len() as u32;
-        self.num_primitives += num_primitives as u64;
-        let primitives: Box<[u8]> = unsafe {
-            let slice: &[(vk::AabbPositionsKHR, T)] = &primitives;
-            let size = std::mem::size_of_val(slice);
-            let data = Box::leak(primitives) as *mut _ as *mut u8;
-            Box::from_raw(std::ptr::slice_from_raw_parts_mut(data, size))
-        };
-        self.primitive_datasize += primitives.len();
+        let num_primitives = primitives.size() / stride as u64;
+        self.num_primitives += num_primitives;
+        self.primitive_datasize += primitives.size() as usize;
         self.geometries.push((primitives, stride, flags));
-        self.geometry_primitive_counts.push(num_primitives);
+        self.geometry_primitive_counts.push(num_primitives as u32);
     }
     fn build(
         self,
@@ -598,9 +317,7 @@ impl AabbBlasBuilder {
             AccelerationStructureBuild {
                 accel_struct,
                 build_size,
-                ty: AccelerationStructureBuildType::BlasAabb {
-                    geometries: self.geometries.into_boxed_slice(),
-                },
+                geometries: self.geometries.into_boxed_slice(),
                 primitive_datasize: self.primitive_datasize,
             }
         }

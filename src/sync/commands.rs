@@ -75,7 +75,7 @@ impl<'q> CommandsFuture<'q> {
         self
     }
 
-    pub fn then_commands(&mut self, f: impl FnOnce(CommandRecorder)) -> &mut Self {
+    pub fn then_commands<R>(&mut self, f: impl FnOnce(CommandRecorder) -> R) -> R {
         let mut recording_buffer = self.recording_cmd_buf.take().unwrap_or_else(|| {
             let buf = self
                 .queues
@@ -86,9 +86,9 @@ impl<'q> CommandsFuture<'q> {
             buf.start(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
                 .unwrap()
         });
-        recording_buffer.record(f);
+        let ret = recording_buffer.record(f);
         self.recording_cmd_buf = Some(recording_buffer);
-        self
+        ret
     }
     fn flush_recording_commands(&mut self) {
         if let Some(builder) = self.recording_cmd_buf.take() {

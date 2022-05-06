@@ -68,15 +68,14 @@ impl CommandBuffer {
 }
 
 impl CommandBufferBuilder {
-    pub fn record(&mut self, f: impl FnOnce(CommandRecorder)) {
+    pub fn record<R>(&mut self, f: impl FnOnce(CommandRecorder) -> R) -> R {
         let recorder = CommandRecorder {
             device: self.command_buffer.pool.device().as_ref(),
             command_buffer: self.command_buffer.buffer,
             referenced_resources: &mut self.resource_guards,
         };
         let pool = self.command_buffer.pool.pool.lock().unwrap();
-        f(recorder);
-        drop(pool);
+        f(recorder)
     }
     pub fn end(self) -> VkResult<CommandExecutable> {
         unsafe {
