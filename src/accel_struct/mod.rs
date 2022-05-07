@@ -2,7 +2,7 @@ use std::{mem::ManuallyDrop, ops::Deref, sync::Arc};
 
 use crate::{
     resources::{alloc::MemBuffer, buffer::vec_discrete::VecDiscrete},
-    Device,
+    Device, HasDevice,
 };
 use ash::extensions::khr;
 use ash::vk;
@@ -58,14 +58,25 @@ impl Into<vk::GeometryTypeKHR> for AccelerationStructureType {
 pub struct AccelerationStructure {
     loader: Arc<AccelerationStructureLoader>,
     raw: vk::AccelerationStructureKHR,
-    primitives_buffer: Option<VecDiscrete<vk::AabbPositionsKHR>>,
+    device_address: vk::DeviceAddress,
     backing_buffer: ManuallyDrop<MemBuffer>,
     compacted: bool,
 
     ty: AccelerationStructureType,
     flags: vk::BuildAccelerationStructureFlagsKHR,
-    num_primitives: u64,
     geometries_num_primitives: Vec<u32>,
+}
+
+impl HasDevice for AccelerationStructure {
+    fn device(&self) -> &Arc<Device> {
+        self.loader.device()
+    }
+}
+
+impl AccelerationStructure {
+    pub fn device_address(&self) -> vk::DeviceAddress {
+        self.device_address
+    }
 }
 
 impl Drop for AccelerationStructure {

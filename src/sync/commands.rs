@@ -29,6 +29,12 @@ pub struct CommandsFuture<'q> {
 impl Drop for CommandsFuture<'_> {
     fn drop(&mut self) {
         self.flush_recording_commands();
+        if self.cmd_execs.is_empty()
+            && self.semaphore_waits.is_empty()
+            && self.semaphore_signals.is_empty()
+        {
+            return;
+        }
         use std::mem::take;
         // When dropping CommandsFuture it is no longer possible to add semaphores to it.
         // Therefore, this is in fact the best opportunity to flush.

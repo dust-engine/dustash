@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{command::recorder::CommandRecorder, Device};
+use crate::{command::recorder::CommandRecorder, sync::CommandsFuture, Device};
 
 use super::buffer::HasBuffer;
 
@@ -233,7 +233,7 @@ impl Allocator {
         self: &Arc<Self>,
         mut request: BufferRequest,
         f: impl FnOnce(&mut [u8]),
-        command_recorder: &mut CommandRecorder,
+        commands_future: &mut CommandsFuture,
     ) -> Result<Arc<MemBuffer>, gpu_alloc::AllocationError> {
         let should_staging = !matches!(
             self.staging_strategy,
@@ -258,15 +258,17 @@ impl Allocator {
         staging_buf.map_scoped(0, request.size as usize, f);
 
         let target_buf = Arc::new(target_buf);
-        command_recorder.copy_buffer(
-            staging_buf,
-            target_buf.clone(),
-            &[vk::BufferCopy {
-                src_offset: 0,
-                dst_offset: 0,
-                size: request.size,
-            }],
-        );
+        commands_future.then_commands(|mut recorder| {
+            recorder.copy_buffer(
+                staging_buf,
+                target_buf.clone(),
+                &[vk::BufferCopy {
+                    src_offset: 0,
+                    dst_offset: 0,
+                    size: request.size,
+                }],
+            );
+        });
         Ok(target_buf)
     }
 }

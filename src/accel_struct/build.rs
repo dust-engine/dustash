@@ -303,14 +303,19 @@ impl AabbBlasBuilder {
                     None,
                 )
                 .unwrap();
+            let device_address = loader.get_acceleration_structure_device_address(
+                &vk::AccelerationStructureDeviceAddressInfoKHR {
+                    acceleration_structure: raw,
+                    ..Default::default()
+                },
+            );
             let accel_struct = AccelerationStructure {
                 loader,
                 raw,
-                primitives_buffer: None,
+                device_address,
                 backing_buffer: ManuallyDrop::new(backing_buffer),
                 compacted: false,
                 flags: self.flags,
-                num_primitives: self.num_primitives,
                 geometries_num_primitives: self.geometry_primitive_counts,
                 ty: super::AccelerationStructureType::BottomLevelAABBs,
             };
