@@ -74,7 +74,8 @@ impl CommandBufferBuilder {
             command_buffer: self.command_buffer.buffer,
             referenced_resources: &mut self.resource_guards,
         };
-        let pool = self.command_buffer.pool.pool.lock().unwrap();
+        // During recording, the cmmand pool needs to be locked too.
+        let _pool = self.command_buffer.pool.pool.lock().unwrap();
         f(recorder)
     }
     pub fn end(self) -> VkResult<CommandExecutable> {

@@ -1,16 +1,10 @@
-use std::{mem::ManuallyDrop, ops::Range, sync::Arc};
+use std::{ops::Range, sync::Arc};
 
 use super::AccelerationStructure;
 use super::AccelerationStructureLoader;
 use crate::resources::alloc::MemBuffer;
+use crate::resources::alloc::{Allocator, BufferRequest};
 use crate::sync::CommandsFuture;
-use crate::{
-    command::{
-        recorder::CommandRecorder,
-        sync::{AccessType, MemoryBarrier, PipelineBarrierConst},
-    },
-    resources::alloc::{Allocator, BufferRequest},
-};
 
 use crate::HasDevice;
 use ash::vk;
@@ -281,44 +275,14 @@ impl AabbBlasBuilder {
             build_size.build_scratch_size = build_size
                 .build_scratch_size
                 .next_multiple_of(scratch_buffer_alignment as u64);
-            let backing_buffer = allocator
-                .allocate_buffer(BufferRequest {
-                    size: build_size.acceleration_structure_size,
-                    alignment: 0,
-                    usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
-                    memory_usage: gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
-                    sharing_mode: vk::SharingMode::EXCLUSIVE,
-                    queue_families: &[],
-                })
-                .unwrap();
-            let raw = loader
-                .create_acceleration_structure(
-                    &vk::AccelerationStructureCreateInfoKHR {
-                        buffer: backing_buffer.buffer,
-                        offset: 0,
-                        size: build_size.acceleration_structure_size,
-                        ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-                        ..Default::default()
-                    },
-                    None,
-                )
-                .unwrap();
-            let device_address = loader.get_acceleration_structure_device_address(
-                &vk::AccelerationStructureDeviceAddressInfoKHR {
-                    acceleration_structure: raw,
-                    ..Default::default()
-                },
-            );
-            let accel_struct = AccelerationStructure {
+            let mut accel_struct = AccelerationStructure::new(
                 loader,
-                raw,
-                device_address,
-                backing_buffer: ManuallyDrop::new(backing_buffer),
-                compacted: false,
-                flags: self.flags,
-                geometries_num_primitives: self.geometry_primitive_counts,
-                ty: super::AccelerationStructureType::BottomLevelAABBs,
-            };
+                &allocator,
+                build_size.acceleration_structure_size,
+                super::AccelerationStructureType::BottomLevelAABBs,
+            );
+            accel_struct.geometries_num_primitives = self.geometry_primitive_counts;
+            accel_struct.flags = self.flags;
             AccelerationStructureBuild {
                 accel_struct,
                 build_size,

@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{command::recorder::CommandRecorder, sync::CommandsFuture, Device};
+use crate::{sync::CommandsFuture, Device};
 
 use super::buffer::HasBuffer;
 
