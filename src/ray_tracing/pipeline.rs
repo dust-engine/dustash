@@ -1,5 +1,5 @@
 use super::sbt::{HitGroupType, SbtHandles, SbtLayout};
-use crate::ray_tracing::sbt::SpecializedShader;
+use crate::shader::SpecializedShader;
 use crate::Device;
 use ash::extensions::khr;
 use ash::{prelude::VkResult, vk};
@@ -15,6 +15,13 @@ impl PipelineLayout {
         unsafe {
             let layout = device.create_pipeline_layout(info, None)?;
             Ok(Self { device, layout })
+        }
+    }
+}
+impl Drop for PipelineLayout {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_pipeline_layout(self.layout, None);
         }
     }
 }
@@ -48,12 +55,12 @@ pub struct RayTracingPipeline {
     pub(super) handles: SbtHandles,
 }
 pub struct RayTracingPipelineLayout<'a> {
-    pipeline_layout: &'a PipelineLayout,
-    sbt_layout: &'a SbtLayout,
-    max_recursion_depth: u32,
+    pub pipeline_layout: &'a PipelineLayout,
+    pub sbt_layout: &'a SbtLayout,
+    pub max_recursion_depth: u32,
 }
 impl RayTracingPipeline {
-    pub fn new(
+    pub fn create_many(
         loader: Arc<RayTracingLoader>,
         sbt_layouts: &[RayTracingPipelineLayout],
     ) -> VkResult<Vec<Self>> {

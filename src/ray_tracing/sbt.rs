@@ -1,6 +1,6 @@
 use std::{alloc::Layout, sync::Arc};
 
-use crate::{resources::alloc::MemBuffer, shader::Shader};
+use crate::{resources::alloc::MemBuffer, shader::SpecializedShader};
 
 use super::pipeline::{RayTracingLoader, RayTracingPipeline};
 use crate::HasDevice;
@@ -34,83 +34,6 @@ pub(super) struct HitGroupEntry {
     pub(super) intersection_shader: Option<u32>,
     pub(super) anyhit_shader: Option<u32>,
     pub(super) closest_hit_shader: Option<u32>,
-}
-
-#[derive(Clone, Default)]
-pub struct SpecializationInfo {
-    pub(super) data: Vec<u8>,
-    pub(super) entries: Vec<vk::SpecializationMapEntry>,
-}
-impl PartialEq for SpecializationInfo {
-    fn eq(&self, other: &Self) -> bool {
-        self.data == other.data
-            && self.entries.len() == other.entries.len()
-            && self
-                .entries
-                .iter()
-                .zip(other.entries.iter())
-                .all(|(this, other)| {
-                    this.constant_id == other.constant_id
-                        && this.offset == other.offset
-                        && this.size == other.size
-                })
-    }
-}
-impl Eq for SpecializationInfo {}
-impl SpecializationInfo {
-    pub fn new() -> Self {
-        Self {
-            data: Vec::new(),
-            entries: Vec::new(),
-        }
-    }
-    pub fn push<T: Copy + 'static>(&mut self, constant_id: u32, item: T) {
-        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<bool>() {
-            panic!("Use push_bool")
-        }
-        let size = std::mem::size_of::<T>();
-        self.entries.push(vk::SpecializationMapEntry {
-            constant_id,
-            offset: self.data.len() as u32,
-            size,
-        });
-        self.data.reserve(size);
-        unsafe {
-            let target_ptr = self.data.as_mut_ptr().add(self.data.len());
-            std::ptr::copy_nonoverlapping(&item as *const T as *const u8, target_ptr, size);
-            self.data.set_len(self.data.len() + size);
-        }
-    }
-    pub fn push_bool(&mut self, constant_id: u32, item: bool) {
-        let size = std::mem::size_of::<vk::Bool32>();
-        self.entries.push(vk::SpecializationMapEntry {
-            constant_id,
-            offset: self.data.len() as u32,
-            size,
-        });
-        self.data.reserve(size);
-        unsafe {
-            let item: vk::Bool32 = if item { vk::TRUE } else { vk::FALSE };
-            let target_ptr = self.data.as_mut_ptr().add(self.data.len());
-            std::ptr::copy_nonoverlapping(
-                &item as *const vk::Bool32 as *const u8,
-                target_ptr,
-                size,
-            );
-            self.data.set_len(self.data.len() + size);
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct SpecializedShader {
-    pub(super) shader: Arc<Shader>,
-    pub(super) specialization: Option<SpecializationInfo>,
-}
-impl PartialEq for SpecializedShader {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.shader, &other.shader) && self.specialization == other.specialization
-    }
 }
 
 impl SbtLayout {
