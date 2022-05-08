@@ -97,6 +97,18 @@ impl crate::HasDevice for Allocator {
         &self.device
     }
 }
+impl Drop for Allocator {
+    fn drop(&mut self) {
+        unsafe {
+            // Ensure that all vkDeviceMemory are destroyed prior to destroying the device.
+            self.allocator
+                .write()
+                .unwrap()
+                .cleanup(gpu_alloc_ash::AshMemoryDevice::wrap(&self.device));
+        }
+    }
+}
+
 impl Allocator {
     pub fn new(device: Arc<Device>) -> Self {
         use gpu_alloc::{Config, DeviceProperties, MemoryHeap, MemoryType};
