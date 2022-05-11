@@ -54,6 +54,13 @@ pub struct RayTracingPipeline {
     pub(super) pipeline: vk::Pipeline,
     pub(super) handles: SbtHandles,
 }
+impl Drop for RayTracingPipeline {
+    fn drop(&mut self) {
+        unsafe {
+            self.loader.device.destroy_pipeline(self.pipeline, None);
+        }
+    }
+}
 pub struct RayTracingPipelineLayout<'a> {
     pub pipeline_layout: &'a PipelineLayout,
     pub sbt_layout: &'a SbtLayout,

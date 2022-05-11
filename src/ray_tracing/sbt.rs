@@ -41,11 +41,12 @@ impl SbtLayout {
         raygen_shader: SpecializedShader,
         miss_shaders: Box<[SpecializedShader]>,
         callable_shaders: Box<[SpecializedShader]>,
-        hitgroups: impl ExactSizeIterator<Item = HitGroup>,
+        hitgroups: &[HitGroup],
     ) -> Self {
         let mut hitgroup_shaders: Vec<(vk::ShaderStageFlags, SpecializedShader)> =
             Vec::with_capacity(hitgroups.len() * 3);
         let hitgroup_entries: Vec<HitGroupEntry> = hitgroups
+            .into_iter()
             .map(|hitgroup| {
                 let mut entry = HitGroupEntry {
                     ty: hitgroup.ty,
@@ -55,15 +56,16 @@ impl SbtLayout {
                 };
                 macro_rules! push_shader {
                     ($shader_type: ident, $shader_stage_flags: expr) => {
-                        if let Some(hitgroup_shader) = hitgroup.$shader_type {
+                        if let Some(hitgroup_shader) = hitgroup.$shader_type.as_ref() {
                             // Find index of existing shader
                             let index = hitgroup_shaders
                                 .iter()
-                                .position(|(_, shader)| shader == &hitgroup_shader)
+                                .position(|(_, shader)| shader == hitgroup_shader)
                                 .unwrap_or_else(|| {
                                     // Push the new shader into hitgroup_shaders
                                     let index = hitgroup_shaders.len();
-                                    hitgroup_shaders.push(($shader_stage_flags, hitgroup_shader));
+                                    hitgroup_shaders
+                                        .push(($shader_stage_flags, hitgroup_shader.clone()));
                                     index
                                 });
                             entry.$shader_type = Some(index as u32);
