@@ -55,7 +55,7 @@ impl AccelerationStructureBuilder {
             .sum();
         let scratch_buffer = self
             .allocator
-            .allocate_buffer(BufferRequest {
+            .allocate_buffer(&BufferRequest {
                 size: scratch_buffer_total,
                 alignment: scratch_buffer_alignment as u64,
                 // VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03674
@@ -63,8 +63,7 @@ impl AccelerationStructureBuilder {
                 // is queried must have been created with VK_BUFFER_USAGE_STORAGE_BUFFER_BIT usage flag
                 usage: vk::BufferUsageFlags::STORAGE_BUFFER
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                memory_usage: gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS
-                    | gpu_alloc::UsageFlags::DEVICE_ADDRESS,
+                memory_usage: vk_mem::MemoryUsage::Auto,
                 ..Default::default()
             })
             .unwrap();
@@ -121,7 +120,7 @@ impl AccelerationStructureBuilder {
             unsafe {
                 assert_eq!(build_infos.len(), build_range_ptrs.len());
                 // First, build the BLASs
-                self.loader.fp().cmd_build_acceleration_structures_khr(
+                (self.loader.fp().cmd_build_acceleration_structures_khr)(
                     recorder.command_buffer,
                     build_infos.len() as u32,
                     build_infos.as_ptr(),

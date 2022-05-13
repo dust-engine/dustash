@@ -8,7 +8,6 @@ use crate::{
 use ash::extensions::khr;
 use ash::vk;
 pub mod build;
-use crate::resources::alloc::MemoryUsageFlags;
 
 pub struct AccelerationStructureLoader {
     device: Arc<Device>,
@@ -96,11 +95,11 @@ impl AccelerationStructure {
         ty: AccelerationStructureType,
     ) -> Self {
         let backing_buffer = allocator
-            .allocate_buffer(BufferRequest {
+            .allocate_buffer(&BufferRequest {
                 size,
                 alignment: 0,
                 usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
-                memory_usage: gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
+                memory_usage: vk_mem::MemoryUsage::Auto,
                 ..Default::default()
             })
             .unwrap();
@@ -155,8 +154,7 @@ impl AccelerationStructure {
                     alignment: 0,
                     usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                    memory_usage: MemoryUsageFlags::FAST_DEVICE_ACCESS
-                        | MemoryUsageFlags::DEVICE_ADDRESS,
+                    memory_usage: vk_mem::MemoryUsage::Auto,
                     ..Default::default()
                 },
                 |target_region| {
@@ -204,7 +202,7 @@ impl AccelerationStructure {
             )
         };
         let scratch_buffer = allocator
-            .allocate_buffer(BufferRequest {
+            .allocate_buffer(&BufferRequest {
                 size: build_sizes.build_scratch_size,
                 alignment: loader
                     .physical_device()
@@ -214,9 +212,7 @@ impl AccelerationStructure {
                     as u64,
                 usage: vk::BufferUsageFlags::STORAGE_BUFFER
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                memory_usage: MemoryUsageFlags::FAST_DEVICE_ACCESS
-                    | MemoryUsageFlags::DEVICE_ADDRESS
-                    | MemoryUsageFlags::TRANSIENT,
+                memory_usage: vk_mem::MemoryUsage::Auto,
                 ..Default::default()
             })
             .unwrap();

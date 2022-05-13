@@ -2,7 +2,7 @@ use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
 
 use crate::Device;
-pub mod vec_discrete;
+//pub mod vec_discrete;
 
 pub struct Buffer {
     device: Arc<Device>,

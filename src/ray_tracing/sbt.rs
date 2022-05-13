@@ -266,7 +266,7 @@ impl Sbt {
                 )
             }
         }
-        target_membuffer.map_scoped(0, sbt_layout.size(), |target_slice| {
+        target_membuffer.map_scoped(|target_slice| {
             {
                 // Copy raygen records
                 let raygen_slice = &mut target_slice[0..raygen_layout.size()];

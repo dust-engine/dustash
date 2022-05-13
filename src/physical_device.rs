@@ -45,6 +45,9 @@ impl PhysicalDevice {
     pub fn features(&self) -> &PhysicalDeviceFeatures {
         &self.features
     }
+    pub fn integrated(&self) -> bool {
+        self.properties.device_type == vk::PhysicalDeviceType::INTEGRATED_GPU
+    }
     pub fn image_format_properties(
         &self,
         format_info: &vk::PhysicalDeviceImageFormatInfo2,

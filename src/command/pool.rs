@@ -49,7 +49,7 @@ impl CommandPool {
         let pool = self.pool.lock().unwrap();
         let mut buffer = vk::CommandBuffer::null();
         let result = unsafe {
-            self.device.fp_v1_0().allocate_command_buffers(
+            (self.device.fp_v1_0().allocate_command_buffers)(
                 self.device.handle(),
                 &vk::CommandBufferAllocateInfo::builder()
                     .command_pool(*pool)
@@ -72,7 +72,7 @@ impl CommandPool {
         let mut buffers = [vk::CommandBuffer::null(); N];
         let pool = self.pool.lock().unwrap();
         let result = unsafe {
-            self.device.fp_v1_0().allocate_command_buffers(
+            (self.device.fp_v1_0().allocate_command_buffers)(
                 self.device.handle(),
                 &vk::CommandBufferAllocateInfo::builder()
                     .command_pool(*pool)
