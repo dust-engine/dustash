@@ -1,7 +1,4 @@
-use ash::{
-    prelude::VkResult,
-    vk::{self, DeviceMemory},
-};
+use ash::{prelude::VkResult, vk};
 use std::{ops::Deref, sync::Arc};
 
 use crate::{sync::CommandsFuture, Device, MemoryHeap, MemoryType};
@@ -34,11 +31,27 @@ pub enum DeviceMemoryModel {
 
 impl Allocator {
     pub fn new(device: Arc<Device>) -> Self {
-        let allocator = vk_mem::Allocator::new(vk_mem::AllocatorCreateInfo::new(
-            device.instance().as_ref().deref(),
-            device.as_ref().deref(),
-            device.physical_device().raw(),
-        ))
+        let mut allocator_flags: vk_mem::AllocatorCreateFlags =
+            vk_mem::AllocatorCreateFlags::empty();
+        if device
+            .physical_device()
+            .features()
+            .v12
+            .buffer_device_address
+            == vk::TRUE
+        {
+            allocator_flags |= vk_mem::AllocatorCreateFlags::BUFFER_DEVICE_ADDRESS;
+        }
+
+        let allocator = vk_mem::Allocator::new(
+            vk_mem::AllocatorCreateInfo::new(
+                device.instance().as_ref().deref(),
+                device.as_ref().deref(),
+                device.physical_device().raw(),
+            )
+            .vulkan_api_version(vk::make_api_version(0, 1, 3, 0))
+            .flags(allocator_flags),
+        )
         .unwrap();
         let (heaps, types) = device.physical_device().get_memory_properties();
         let memory_model = if device.physical_device().integrated() {
@@ -54,8 +67,8 @@ impl Allocator {
                         .flags
                         .contains(vk::MemoryHeapFlags::DEVICE_LOCAL)
                 })
-                .map(|a| (&heaps[a.heap_index as usize], a.heap_index));
-            if let Some((bar_heap, bar_heap_index)) = bar_heap {
+                .map(|a| &heaps[a.heap_index as usize]);
+            if let Some(bar_heap) = bar_heap {
                 if bar_heap.size <= 256 * 1024 * 1024 {
                     // regular 256MB bar
                     DeviceMemoryModel::DiscreteBar
@@ -85,7 +98,6 @@ impl Allocator {
         let mut preferred_flags = vk::MemoryPropertyFlags::empty();
         let mut non_preferred_flags = vk::MemoryPropertyFlags::empty();
         let mut memory_usage = vk_mem::MemoryUsage::Unknown;
-        let mut memory_type_bits = u32::MAX;
         match scenario {
             MemoryAllocScenario::StagingBuffer => {
                 required_flags |= vk::MemoryPropertyFlags::HOST_VISIBLE;
@@ -196,12 +208,21 @@ impl Allocator {
                 )
             }
         }?;
+        let memory_flags = unsafe {
+            self.types[self
+                .allocator
+                .get_allocation_info(&allocation)
+                .unwrap()
+                .memory_type as usize]
+                .property_flags
+        };
         Ok(MemBuffer {
             allocator: self.clone(),
             buffer,
             memory: allocation,
             size: request.size,
             alignment: request.alignment,
+            memory_flags,
         })
     }
 
@@ -217,50 +238,30 @@ impl Allocator {
             }
             _ => {}
         }
-        let mut request = BufferRequest {
+        let request = BufferRequest {
             size: request.size,
             alignment: request.alignment,
             usage: request.usage | vk::BufferUsageFlags::TRANSFER_DST,
-            allocation_flags: AllocationCreateFlags::MAPPED,
             scenario: request.scenario,
             ..Default::default()
         };
 
         let mut buffer = self.allocate_buffer(&request)?;
-        let info = unsafe { self.allocator.get_allocation_info(&buffer.memory).unwrap() };
-        if !info.mapped_data.is_null() {
-            unsafe {
-                let slice = std::slice::from_raw_parts_mut(
-                    info.mapped_data as *mut u8,
-                    request.size as usize,
-                );
-                f(slice);
-                self.allocator.unmap_memory(&mut buffer.memory);
-            };
+        if buffer
+            .memory_properties()
+            .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+        {
+            buffer.map_scoped(f);
             return Ok(Arc::new(buffer));
         }
         let mut staging_buffer = self.allocate_buffer(&BufferRequest {
             size: request.size,
             alignment: request.alignment,
             usage: vk::BufferUsageFlags::TRANSFER_SRC,
-            allocation_flags: AllocationCreateFlags::MAPPED,
             scenario: MemoryAllocScenario::StagingBuffer,
             ..Default::default()
         })?;
-        let staging_info = unsafe {
-            self.allocator
-                .get_allocation_info(&staging_buffer.memory)
-                .unwrap()
-        };
-        assert!(!staging_info.mapped_data.is_null());
-        unsafe {
-            let slice = std::slice::from_raw_parts_mut(
-                staging_info.mapped_data as *mut u8,
-                request.size as usize,
-            );
-            f(slice);
-            self.allocator.unmap_memory(&mut staging_buffer.memory);
-        }
+        staging_buffer.map_scoped(f);
 
         let target_buf = Arc::new(buffer);
         commands_future.then_commands(|mut recorder| {
@@ -340,6 +341,7 @@ pub struct MemBuffer {
     pub memory: Allocation,
     size: u64,
     alignment: u64,
+    pub memory_flags: vk::MemoryPropertyFlags,
 }
 
 impl HasBuffer for MemBuffer {
@@ -365,6 +367,10 @@ impl MemBuffer {
 
     pub fn alignment(&self) -> u64 {
         self.alignment
+    }
+
+    pub fn memory_properties(&self) -> vk::MemoryPropertyFlags {
+        self.memory_flags
     }
     /*
     pub fn set_debug_name_raw(&self, device: &ash::Device, debug_utils: &DebugUtils, name: &CStr) {
