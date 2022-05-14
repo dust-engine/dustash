@@ -3,6 +3,7 @@ use std::{ops::Range, sync::Arc};
 use super::AccelerationStructure;
 use super::AccelerationStructureLoader;
 use crate::resources::alloc::MemBuffer;
+use crate::resources::alloc::MemoryAllocScenario;
 use crate::resources::alloc::{Allocator, BufferRequest};
 use crate::sync::CommandsFuture;
 
@@ -63,7 +64,7 @@ impl AccelerationStructureBuilder {
                 // is queried must have been created with VK_BUFFER_USAGE_STORAGE_BUFFER_BIT usage flag
                 usage: vk::BufferUsageFlags::STORAGE_BUFFER
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                memory_usage: vk_mem::MemoryUsage::Auto,
+                scenario: MemoryAllocScenario::DeviceAccess,
                 ..Default::default()
             })
             .unwrap();

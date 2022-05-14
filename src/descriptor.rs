@@ -107,12 +107,14 @@ impl Drop for DescriptorSet {
         let raw_pool = self.pool.raw.lock().unwrap();
         tracing::info!(device = ?raw_pool.0, "free descriptor set");
         unsafe {
-            (self.pool
-                .device
-                .fp_v1_0()
-                .free_descriptor_sets)(self.pool.device.handle(), raw_pool.0, 1, &self.raw)
-                .result()
-                .unwrap();
+            (self.pool.device.fp_v1_0().free_descriptor_sets)(
+                self.pool.device.handle(),
+                raw_pool.0,
+                1,
+                &self.raw,
+            )
+            .result()
+            .unwrap();
         }
     }
 }

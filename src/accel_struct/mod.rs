@@ -1,7 +1,7 @@
 use std::{mem::ManuallyDrop, ops::Deref, sync::Arc};
 
 use crate::{
-    resources::alloc::{Allocator, BufferRequest, MemBuffer},
+    resources::alloc::{Allocator, BufferRequest, MemBuffer, MemoryAllocScenario},
     sync::CommandsFuture,
     Device, HasDevice,
 };
@@ -99,7 +99,7 @@ impl AccelerationStructure {
                 size,
                 alignment: 0,
                 usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
-                memory_usage: vk_mem::MemoryUsage::Auto,
+                scenario: MemoryAllocScenario::DeviceAccess,
                 ..Default::default()
             })
             .unwrap();
@@ -154,7 +154,7 @@ impl AccelerationStructure {
                     alignment: 0,
                     usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                    memory_usage: vk_mem::MemoryUsage::Auto,
+                    scenario: MemoryAllocScenario::AssetBuffer,
                     ..Default::default()
                 },
                 |target_region| {
@@ -212,7 +212,7 @@ impl AccelerationStructure {
                     as u64,
                 usage: vk::BufferUsageFlags::STORAGE_BUFFER
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                memory_usage: vk_mem::MemoryUsage::Auto,
+                scenario: MemoryAllocScenario::DeviceAccess,
                 ..Default::default()
             })
             .unwrap();
