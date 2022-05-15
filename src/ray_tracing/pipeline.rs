@@ -90,7 +90,11 @@ impl RayTracingPipeline {
             .sum::<usize>()
             + sbt_layouts.len();
 
+        // Specifying the capacity for these arrays is important. We must ensure that these vecs are
+        // not gonna be reallocated to ensure that the pointer in PipelineShaderStageCreateInfo remains valid.
         let mut stages: Vec<vk::PipelineShaderStageCreateInfo> =
+            Vec::with_capacity(total_num_stages);
+        let mut specialization_infos: Vec<vk::SpecializationInfo> =
             Vec::with_capacity(total_num_stages);
         let mut groups: Vec<vk::RayTracingShaderGroupCreateInfoKHR> =
             Vec::with_capacity(total_num_groups);
@@ -98,7 +102,7 @@ impl RayTracingPipeline {
         fn create_stage(
             module: &SpecializedShader,
             stage: vk::ShaderStageFlags,
-        ) -> vk::PipelineShaderStageCreateInfo {
+        ) -> (vk::PipelineShaderStageCreateInfo, vk::SpecializationInfo) {
             static SHADER_ENTRY_NAME_MAIN: &std::ffi::CStr =
                 unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"main\0") };
             let specialization_info = if let Some(info) = module.specialization.as_ref() {
@@ -111,13 +115,13 @@ impl RayTracingPipeline {
             } else {
                 vk::SpecializationInfo::default()
             };
-            vk::PipelineShaderStageCreateInfo::builder()
+            (vk::PipelineShaderStageCreateInfo::builder()
                 .flags(vk::PipelineShaderStageCreateFlags::default())
                 .stage(stage)
                 .module(module.shader.module)
                 .name(SHADER_ENTRY_NAME_MAIN)
                 .specialization_info(&specialization_info)
-                .build()
+                .build(), specialization_info)
         }
         let create_infos = sbt_layouts
             .iter()
@@ -153,13 +157,21 @@ impl RayTracingPipeline {
                         .hitgroup_shaders
                         .iter()
                         .map(|(stage, module)| create_stage(module, *stage)),
-                );
+                ).map(|(mut create_info, specialization_info)| {
+                    // specialization_infos cannot be reallocated, since RayTracingPipelineCreateInfoKHR retains a pointer into this array
+                    debug_assert!(specialization_infos.len() < specialization_infos.capacity());
+                    specialization_infos.push(specialization_info);
+                    create_info.p_specialization_info = specialization_infos.last().unwrap();
+                    create_info
+                });
                 let stages_range = stages.len()
                     ..stages.len()
                         + 1
                         + layout.sbt_layout.miss_shaders.len()
                         + layout.sbt_layout.callable_shaders.len()
                         + layout.sbt_layout.hitgroup_shaders.len();
+                debug_assert!(stages.len() < stages.capacity());
+                // stages cannot be reallocated, since RayTracingPipelineCreateInfoKHR retains a pointer into this array
                 stages.extend(sbt_stages);
 
                 let sbt_groups = std::iter::once(
@@ -221,12 +233,14 @@ impl RayTracingPipeline {
                         )
                         .build()
                 }));
-                let groups_range = stages.len()
-                    ..stages.len()
+                let groups_range = groups.len()
+                    ..groups.len()
                         + 1
                         + layout.sbt_layout.miss_shaders.len()
                         + layout.sbt_layout.callable_shaders.len()
                         + layout.sbt_layout.hitgroups.len();
+                // groups cannot be reallocated, since RayTracingPipelineCreateInfoKHR retains a pointer into this array
+                debug_assert!(groups.len() < groups.capacity());
                 groups.extend(sbt_groups);
 
                 vk::RayTracingPipelineCreateInfoKHR::builder()
