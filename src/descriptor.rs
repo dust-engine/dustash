@@ -25,7 +25,7 @@ impl DescriptorPool {
     }
     pub fn allocate<'a>(
         self: &Arc<Self>,
-        layouts: impl IntoIterator<Item = &'a DescriptorPoolLayout>,
+        layouts: impl IntoIterator<Item = &'a DescriptorSetLayout>,
     ) -> VkResult<Vec<DescriptorSet>> {
         let layouts = layouts.into_iter().map(|l| l.raw).collect::<Vec<_>>();
         unsafe {
@@ -79,17 +79,17 @@ impl Drop for DescriptorPool {
     }
 }
 
-pub struct DescriptorPoolLayout {
+pub struct DescriptorSetLayout {
     device: Arc<Device>,
     raw: vk::DescriptorSetLayout,
 }
-impl DescriptorPoolLayout {
+impl DescriptorSetLayout {
     pub fn new(device: Arc<Device>, info: &vk::DescriptorSetLayoutCreateInfo) -> VkResult<Self> {
         let raw = unsafe { device.create_descriptor_set_layout(info, None)? };
         Ok(Self { device, raw })
     }
 }
-impl Drop for DescriptorPoolLayout {
+impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
         tracing::info!(device = ?self.raw, "destroy descriptor layout");
         unsafe {
@@ -101,6 +101,11 @@ impl Drop for DescriptorPoolLayout {
 pub struct DescriptorSet {
     raw: vk::DescriptorSet,
     pool: Arc<DescriptorPool>,
+}
+impl DescriptorSet {
+    pub fn raw(&self) -> vk::DescriptorSet {
+        self.raw
+    }
 }
 impl Drop for DescriptorSet {
     fn drop(&mut self) {

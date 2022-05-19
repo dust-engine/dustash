@@ -252,6 +252,9 @@ impl AccelerationStructure {
     pub fn device_address(&self) -> vk::DeviceAddress {
         self.device_address
     }
+    pub fn raw(&self) -> vk::AccelerationStructureKHR {
+        self.raw
+    }
 }
 
 impl Drop for AccelerationStructure {

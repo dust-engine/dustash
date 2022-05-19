@@ -115,13 +115,16 @@ impl RayTracingPipeline {
             } else {
                 vk::SpecializationInfo::default()
             };
-            (vk::PipelineShaderStageCreateInfo::builder()
-                .flags(vk::PipelineShaderStageCreateFlags::default())
-                .stage(stage)
-                .module(module.shader.module)
-                .name(SHADER_ENTRY_NAME_MAIN)
-                .specialization_info(&specialization_info)
-                .build(), specialization_info)
+            (
+                vk::PipelineShaderStageCreateInfo::builder()
+                    .flags(vk::PipelineShaderStageCreateFlags::default())
+                    .stage(stage)
+                    .module(module.shader.module)
+                    .name(SHADER_ENTRY_NAME_MAIN)
+                    .specialization_info(&specialization_info)
+                    .build(),
+                specialization_info,
+            )
         }
         let create_infos = sbt_layouts
             .iter()
@@ -157,7 +160,8 @@ impl RayTracingPipeline {
                         .hitgroup_shaders
                         .iter()
                         .map(|(stage, module)| create_stage(module, *stage)),
-                ).map(|(mut create_info, specialization_info)| {
+                )
+                .map(|(mut create_info, specialization_info)| {
                     // specialization_infos cannot be reallocated, since RayTracingPipelineCreateInfoKHR retains a pointer into this array
                     debug_assert!(specialization_infos.len() < specialization_infos.capacity());
                     specialization_infos.push(specialization_info);

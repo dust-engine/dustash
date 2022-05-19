@@ -16,8 +16,8 @@ use super::GPUFuture;
 use crate::HasDevice;
 
 // This is not a GPU Future because it doesn't represent a momemnt. It's a pipeline.
-pub struct CommandsFuture<'q> {
-    queues: &'q Queues,
+pub struct CommandsFuture {
+    queues: Arc<Queues>,
     pub(crate) queue: QueueIndex,
     pub(crate) available_semaphore_pool: Vec<TimelineSemaphoreOp>,
     pub(crate) semaphore_waits: Vec<StagedSemaphoreOp>,
@@ -26,7 +26,7 @@ pub struct CommandsFuture<'q> {
 
     recording_cmd_buf: Option<CommandBufferBuilder>,
 }
-impl Drop for CommandsFuture<'_> {
+impl Drop for CommandsFuture {
     fn drop(&mut self) {
         self.flush_recording_commands();
         if self.cmd_execs.is_empty()
@@ -45,8 +45,8 @@ impl Drop for CommandsFuture<'_> {
         );
     }
 }
-impl<'q> CommandsFuture<'q> {
-    pub fn new(queues: &'q Queues, queue: QueueIndex) -> Self {
+impl CommandsFuture {
+    pub fn new(queues: Arc<Queues>, queue: QueueIndex) -> Self {
         Self {
             queues,
             semaphore_signals: Vec::new(),
@@ -103,7 +103,7 @@ impl<'q> CommandsFuture<'q> {
         }
     }
 
-    pub fn stage<'a>(&'a mut self, stage: vk::PipelineStageFlags2) -> CommandsStageFuture<'q, 'a> {
+    pub fn stage<'a>(&'a mut self, stage: vk::PipelineStageFlags2) -> CommandsStageFuture<'a> {
         CommandsStageFuture {
             commands_future: self,
             stage,
@@ -111,12 +111,12 @@ impl<'q> CommandsFuture<'q> {
     }
 }
 
-pub struct CommandsStageFuture<'q, 'a> {
-    commands_future: &'a mut CommandsFuture<'q>,
+pub struct CommandsStageFuture<'a> {
+    commands_future: &'a mut CommandsFuture,
     stage: vk::PipelineStageFlags2,
 }
 
-impl<'q, 'a> GPUFuture for CommandsStageFuture<'q, 'a> {
+impl<'q, 'a> GPUFuture for CommandsStageFuture<'a> {
     fn pop_semaphore_pool(&mut self) -> TimelineSemaphoreOp {
         self.commands_future.pop_semaphore_pool()
     }
@@ -144,7 +144,7 @@ impl<'q, 'a> GPUFuture for CommandsStageFuture<'q, 'a> {
     }
 }
 
-impl<'q, 'a> CommandsStageFuture<'q, 'a> {
+impl<'q, 'a> CommandsStageFuture<'a> {
     /// Specify a new queue for execution.
     /// When the new queue and the old queue has the same queue family, this does nothing.
     /// `stage`: This stage in following commands will be blocked by the
@@ -154,7 +154,7 @@ impl<'q, 'a> CommandsStageFuture<'q, 'a> {
         new_queue: QueueIndex,
         barrier: &PipelineBarrier,
         stage: vk::PipelineStageFlags2,
-    ) -> &'a mut CommandsFuture<'q> {
+    ) -> &'a mut CommandsFuture {
         let old_index = self
             .commands_future
             .queues
@@ -171,7 +171,7 @@ impl<'q, 'a> CommandsStageFuture<'q, 'a> {
         self.commands_future.then_commands(|mut recorder| {
             recorder.simple_pipeline_barrier2(barrier);
         });
-        let mut future = CommandsFuture::new(self.commands_future.queues, new_queue); // The future on the new queue
+        let mut future = CommandsFuture::new(self.commands_future.queues.clone(), new_queue); // The future on the new queue
         self.then(future.stage(stage));
         std::mem::swap(&mut future, self.commands_future);
         // future is now the old future.
@@ -192,11 +192,11 @@ mod tests {
     }
     #[test]
     fn test_commands_to_commands_split() {
-        let queues = q();
-        let mut task1 = CommandsFuture::new(&queues, QueueIndex(0));
-        let mut task2 = CommandsFuture::new(&queues, QueueIndex(0));
-        let mut task3 = CommandsFuture::new(&queues, QueueIndex(0));
-        let mut task4 = CommandsFuture::new(&queues, QueueIndex(0));
+        let queues = Arc::new(q());
+        let mut task1 = CommandsFuture::new(queues.clone(), QueueIndex(0));
+        let mut task2 = CommandsFuture::new(queues.clone(), QueueIndex(0));
+        let mut task3 = CommandsFuture::new(queues.clone(), QueueIndex(0));
+        let mut task4 = CommandsFuture::new(queues.clone(), QueueIndex(0));
 
         task1
             .stage(vk::PipelineStageFlags2::VERTEX_SHADER)
@@ -211,11 +211,11 @@ mod tests {
 
     #[test]
     fn test_commands_to_commands_join() {
-        let queues = q();
-        let mut task1 = CommandsFuture::new(&queues, QueueIndex(0));
-        let mut task2 = CommandsFuture::new(&queues, QueueIndex(0));
-        let mut task3 = CommandsFuture::new(&queues, QueueIndex(0));
-        let mut task4 = CommandsFuture::new(&queues, QueueIndex(0));
+        let queues = Arc::new(q());
+        let mut task1 = CommandsFuture::new(queues.clone(), QueueIndex(0));
+        let mut task2 = CommandsFuture::new(queues.clone(), QueueIndex(0));
+        let mut task3 = CommandsFuture::new(queues.clone(), QueueIndex(0));
+        let mut task4 = CommandsFuture::new(queues.clone(), QueueIndex(0));
 
         task1
             .stage(vk::PipelineStageFlags2::FRAGMENT_SHADER)

@@ -23,6 +23,7 @@ pub struct FrameManager {
     frame_index: usize,
 
     images: Vec<vk::Image>,
+    image_views: Vec<vk::ImageView>,
     extent: vk::Extent2D,
     format: vk::SurfaceFormatKHR,
     present_mode: vk::PresentModeKHR,
@@ -149,6 +150,7 @@ impl FrameManager {
             frame_index: 0,
             surface,
             images: Vec::new(),
+            image_views: Vec::new(),
             extent,
             format,
             needs_rebuild: true,
@@ -225,6 +227,7 @@ impl FrameManager {
                                 ),
                                 render_complete_semaphores: Vec::new(),
                                 image: self.images[index as usize],
+                                image_view: self.image_views[index as usize],
                                 present_queue_family: self.present_queue_family,
                                 invalidate_images,
                             };
@@ -294,6 +297,42 @@ impl FrameManager {
         }
         self.generation = self.generation.wrapping_add(1);
         self.images = new_swapchain.get_swapchain_images()?;
+
+        for view in self.image_views.drain(..) {
+            self.swapchain_loader
+                .device()
+                .destroy_image_view(view, None);
+        }
+        self.image_views = self
+            .images
+            .iter()
+            .map(|image| {
+                self.device()
+                    .create_image_view(
+                        &vk::ImageViewCreateInfo {
+                            image: *image,
+                            view_type: vk::ImageViewType::TYPE_2D,
+                            format: self.format.format,
+                            components: vk::ComponentMapping {
+                                r: vk::ComponentSwizzle::R,
+                                g: vk::ComponentSwizzle::G,
+                                b: vk::ComponentSwizzle::B,
+                                a: vk::ComponentSwizzle::A,
+                            },
+                            subresource_range: vk::ImageSubresourceRange {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                base_mip_level: 0,
+                                level_count: 1,
+                                base_array_layer: 0,
+                                layer_count: 1,
+                            },
+                            ..Default::default()
+                        },
+                        None,
+                    )
+                    .unwrap()
+            })
+            .collect();
         self.swapchain = Some(new_swapchain);
         self.needs_rebuild = false;
 
@@ -344,6 +383,18 @@ impl FrameManager {
             .complete_timeline_semaphore
             .append(&mut render_complete_timeline_semaphores);
         Ok(())
+    }
+}
+
+impl Drop for FrameManager {
+    fn drop(&mut self) {
+        for view in self.image_views.drain(..) {
+            unsafe {
+                self.swapchain_loader
+                    .device()
+                    .destroy_image_view(view, None);
+            }
+        }
     }
 }
 
@@ -408,6 +459,7 @@ pub struct AcquiredFrame {
     pub(crate) render_complete_semaphores: Vec<(Arc<Semaphore>, TimelineSemaphoreOp)>,
 
     pub image: vk::Image, // Always valid, since we retain a reference to the swapchain
+    pub image_view: vk::ImageView,
 
     /// If true, the image contained in this frame is different from previous frames.
     /// The application must re-record any command buffers
@@ -476,7 +528,12 @@ impl<T: PerFrameResource> PerFrame<T> {
         };
         self.resources.get_mut(index).map_or(None, Option::as_mut)
     }
-    pub fn get_or_else(&mut self, frame: &AcquiredFrame, f: impl FnOnce() -> T) -> &mut T {
+    pub fn get_or_else(
+        &mut self,
+        frame: &AcquiredFrame,
+        force_update: bool,
+        f: impl FnOnce() -> T,
+    ) -> &mut T {
         let index = if T::PER_IMAGE {
             frame.image_index as usize
         } else {
@@ -486,7 +543,9 @@ impl<T: PerFrameResource> PerFrame<T> {
             self.resources.resize_with(index + 1, || None);
         }
         let slot = &mut self.resources[index];
-        if frame.invalidate_images || slot.is_none() {
+        if frame.invalidate_images || slot.is_none() || force_update {
+            // Drop first, then create new
+            drop(slot.take());
             *slot = Some(f());
         }
         slot.as_mut().unwrap()

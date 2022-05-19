@@ -1,10 +1,15 @@
 use std::{alloc::Layout, sync::Arc};
 
-use crate::{resources::alloc::MemBuffer, shader::SpecializedShader};
+use crate::{
+    resources::alloc::{Allocator, BufferRequest, MemBuffer},
+    shader::SpecializedShader,
+    sync::CommandsFuture,
+};
 
 use super::pipeline::{RayTracingLoader, RayTracingPipeline};
 use crate::HasDevice;
 use ash::{prelude::VkResult, vk};
+use vk_mem::AllocationCreateFlags;
 
 pub struct SbtLayout {
     pub(super) raygen_shader: SpecializedShader,
@@ -155,7 +160,7 @@ impl SbtHandles {
 
 pub struct Sbt {
     pub(super) pipeline: Arc<RayTracingPipeline>,
-    pub(super) buf: MemBuffer,
+    pub(super) buf: Arc<MemBuffer>,
     pub(super) raygen_sbt: vk::StridedDeviceAddressRegionKHR,
     pub(super) miss_sbt: vk::StridedDeviceAddressRegionKHR,
     pub(super) hit_sbt: vk::StridedDeviceAddressRegionKHR,
@@ -183,7 +188,8 @@ impl Sbt {
         rmiss_data: impl IntoIterator<Item = RMISS>,
         callable_data: impl IntoIterator<Item = RCALLABLE>,
         rhit_data: impl IntoIterator<Item = (usize, RHIT), IntoIter = RhitIter>, // Iterator to HitGroup, HitGroup Parameter
-        allocator: impl FnOnce(Layout) -> MemBuffer,
+        allocator: &Arc<Allocator>,
+        commands_future: &mut CommandsFuture,
     ) -> Sbt
     where
         RGEN: Copy,
@@ -249,7 +255,38 @@ impl Sbt {
             .unwrap()
             .0
             .pad_to_align();
-        let mut target_membuffer = allocator(sbt_layout);
+        let mut target_membuffer = allocator
+            .allocate_buffer(&BufferRequest {
+                size: sbt_layout.size() as u64,
+                alignment: sbt_layout.align() as u64,
+                usage: vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
+                    | vk::BufferUsageFlags::TRANSFER_DST
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                scenario: crate::resources::alloc::MemoryAllocScenario::DynamicStorage,
+                allocation_flags: AllocationCreateFlags::empty(),
+                ..Default::default()
+            })
+            .unwrap();
+        let mut staging_buffer = if target_membuffer
+            .memory_flags
+            .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+        {
+            Some(
+                allocator
+                    .allocate_buffer(&BufferRequest {
+                        size: sbt_layout.size() as u64,
+                        alignment: 0,
+                        usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                        scenario: crate::resources::alloc::MemoryAllocScenario::StagingBuffer,
+                        allocation_flags: AllocationCreateFlags::empty(),
+                        ..Default::default()
+                    })
+                    .unwrap(),
+            )
+        } else {
+            None
+        };
+        let buffer_to_write = staging_buffer.as_mut().unwrap_or(&mut target_membuffer);
 
         fn set_sbt_item<T: Copy>(
             sbt_slice: &mut [u8],
@@ -266,7 +303,7 @@ impl Sbt {
                 )
             }
         }
-        target_membuffer.map_scoped(|target_slice| {
+        buffer_to_write.map_scoped(|target_slice| {
             {
                 // Copy raygen records
                 let raygen_slice = &mut target_slice[0..raygen_layout.size()];
@@ -349,6 +386,21 @@ impl Sbt {
                 }
             }
         });
+        let target_membuffer = Arc::new(target_membuffer);
+
+        if let Some(staging_buffer) = staging_buffer {
+            commands_future.then_commands(|mut recorder| {
+                recorder.copy_buffer(
+                    staging_buffer,
+                    target_membuffer.clone(),
+                    &[vk::BufferCopy {
+                        src_offset: 0,
+                        dst_offset: 0,
+                        size: sbt_layout.size() as u64,
+                    }],
+                );
+            });
+        }
 
         let base_device_address = target_membuffer.get_device_address();
         assert!(base_device_address % pipeline.handles.group_base_alignment as u64 == 0);
