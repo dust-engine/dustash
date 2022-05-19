@@ -18,6 +18,11 @@ impl PipelineLayout {
         }
     }
 }
+impl PipelineLayout {
+    pub fn raw(&self) -> vk::PipelineLayout {
+        self.layout
+    }
+}
 impl Drop for PipelineLayout {
     fn drop(&mut self) {
         unsafe {
@@ -53,6 +58,11 @@ pub struct RayTracingPipeline {
     pub(super) loader: Arc<RayTracingLoader>,
     pub(super) pipeline: vk::Pipeline,
     pub(super) handles: SbtHandles,
+}
+impl RayTracingPipeline {
+    pub fn raw(&self) -> vk::Pipeline {
+        self.pipeline
+    }
 }
 impl Drop for RayTracingPipeline {
     fn drop(&mut self) {

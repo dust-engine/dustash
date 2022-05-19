@@ -229,6 +229,7 @@ impl FrameManager {
                                 image: self.images[index as usize],
                                 image_view: self.image_views[index as usize],
                                 present_queue_family: self.present_queue_family,
+                                image_extent: self.extent,
                                 invalidate_images,
                             };
                             self.frame_index = next_frame_index;
@@ -460,6 +461,7 @@ pub struct AcquiredFrame {
 
     pub image: vk::Image, // Always valid, since we retain a reference to the swapchain
     pub image_view: vk::ImageView,
+    pub image_extent: vk::Extent2D,
 
     /// If true, the image contained in this frame is different from previous frames.
     /// The application must re-record any command buffers

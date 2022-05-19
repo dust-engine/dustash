@@ -358,6 +358,11 @@ impl AccessType {
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
+            AccessType::RayTracingShaderWrite => VkAccessInfo2 {
+                stage_mask: vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR,
+                access_mask: vk::AccessFlags2::SHADER_WRITE,
+                image_layout: vk::ImageLayout::GENERAL,
+            },
             AccessType::AnyShaderWrite => VkAccessInfo2 {
                 stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,

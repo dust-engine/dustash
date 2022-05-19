@@ -179,4 +179,23 @@ impl<'a> CommandRecorder<'a> {
         }
         self
     }
+    pub fn bind_raytracing_pipeline(&mut self, pipeline: &crate::ray_tracing::pipeline::RayTracingPipeline) {
+        unsafe {
+            self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::RAY_TRACING_KHR, pipeline.raw())
+        }
+    }
+    pub fn bind_descriptor_set(&mut self, bind_point: vk::PipelineBindPoint, pipeline_layout: &crate::ray_tracing::pipeline::PipelineLayout, first_set: u32,
+        descriptor_sets: &[vk::DescriptorSet],
+        dynamic_offsets: &[u32],) {
+        unsafe {
+            self.device.cmd_bind_descriptor_sets(
+                self.command_buffer,
+                bind_point,
+                pipeline_layout.raw(),
+                first_set,
+                descriptor_sets, 
+                dynamic_offsets
+            );
+        }
+    }
 }

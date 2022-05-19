@@ -196,6 +196,8 @@ pub enum AccessType {
 
     /// Written as any resource in a compute shader
     ComputeShaderWrite,
+    /// Written as any resource in a ray tracing shader
+    RayTracingShaderWrite,
     /// Written as any resource in any shader
     AnyShaderWrite,
 
@@ -539,6 +541,11 @@ impl AccessType {
                 stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                 access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
                 image_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            },
+            AccessType::RayTracingShaderWrite => VkAccessInfo {
+                stage_mask: vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR,
+                access_mask: vk::AccessFlags::SHADER_WRITE,
+                image_layout: vk::ImageLayout::GENERAL
             },
             AccessType::DepthStencilAttachmentWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::from_raw(

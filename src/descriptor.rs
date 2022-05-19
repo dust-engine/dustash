@@ -88,6 +88,9 @@ impl DescriptorSetLayout {
         let raw = unsafe { device.create_descriptor_set_layout(info, None)? };
         Ok(Self { device, raw })
     }
+    pub fn raw(&self) -> vk::DescriptorSetLayout {
+        self.raw
+    }
 }
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
