@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use ash::{prelude::VkResult, vk};
 
 use crate::resources::{buffer::HasBuffer, HasImage};
@@ -16,6 +18,14 @@ pub struct CommandBufferBuilder {
 pub struct CommandExecutable {
     pub(crate) command_buffer: CommandBuffer,
     pub(crate) _resource_guards: Vec<Box<dyn Send + Sync>>,
+}
+impl Debug for CommandExecutable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("CommandExecutable")
+            .field(&self.command_buffer.buffer)
+            .field(&self._resource_guards.len())
+            .finish()
+    }
 }
 
 impl CommandExecutable {

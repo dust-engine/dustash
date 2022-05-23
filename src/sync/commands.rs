@@ -29,11 +29,23 @@ pub struct CommandsFuture {
 impl Drop for CommandsFuture {
     fn drop(&mut self) {
         self.flush_recording_commands();
-        if self.cmd_execs.is_empty()
-            && self.semaphore_waits.is_empty()
-            && self.semaphore_signals.is_empty()
-        {
-            return;
+        if self.cmd_execs.is_empty() {
+            if self.semaphore_signals.is_empty() {
+                return;
+            }
+
+            if self.semaphore_waits.is_empty() {
+                // Signal directly.
+                for signal in self.semaphore_signals.drain(..) {
+                    if signal.is_timeline() {
+                        signal.stageless().as_timeline().signal().unwrap();
+                    } else {
+                        unimplemented!("Can't signal a binary semaphore here...")
+                    }
+                }
+                return;
+            }
+            // have both signal and waits
         }
         use std::mem::take;
         // When dropping CommandsFuture it is no longer possible to add semaphores to it.

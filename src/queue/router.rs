@@ -3,7 +3,7 @@ use crate::{frames::AcquiredFrame, Device, PhysicalDevice};
 use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum QueueType {
     Graphics = 0,
     Compute = 1,

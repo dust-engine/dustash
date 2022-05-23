@@ -1,6 +1,9 @@
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    fmt::Debug,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use ash::{prelude::VkResult, vk};
@@ -280,6 +283,10 @@ impl QueueDispatcher {
         signal_semaphore_count: usize,
         executables_count: usize,
     ) -> VkResult<()> {
+        println!(
+            "Queue {:?} submits {:#?}",
+            self.assigned_queue_type, submissions
+        );
         let mut wait_semaphores: Vec<vk::SemaphoreSubmitInfo> =
             Vec::with_capacity(wait_semaphore_count);
         let mut signal_semaphores: Vec<vk::SemaphoreSubmitInfo> =
@@ -366,6 +373,21 @@ pub struct StagedSemaphoreOp {
     // When value == 0, the `StagedSemaphoreOp` is a binary semaphore.
     pub value: u64,
 }
+impl Debug for StagedSemaphoreOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = if self.is_timeline() {
+            "StagedSemaphoreOp(Timeline)"
+        } else {
+            "StagedSemaphoreOp(Binary)"
+        };
+        let mut res = f.debug_tuple(name);
+        res.field(&self.semaphore.semaphore).field(&self.stage_mask);
+        if self.is_timeline() {
+            res.field(&self.value);
+        }
+        res.finish()
+    }
+}
 
 #[derive(Clone)]
 pub struct SemaphoreOp {
@@ -440,6 +462,7 @@ impl StagedSemaphoreOp {
     }
 }
 
+#[derive(Debug)]
 struct Submission {
     wait_semaphores: Box<[StagedSemaphoreOp]>,
     executables: Box<[Arc<CommandExecutable>]>,
