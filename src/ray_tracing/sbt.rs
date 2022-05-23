@@ -11,6 +11,7 @@ use crate::HasDevice;
 use ash::{prelude::VkResult, vk};
 use vk_mem::AllocationCreateFlags;
 
+#[derive(Debug)]
 pub struct SbtLayout {
     pub(super) raygen_shader: SpecializedShader,
     pub(super) miss_shaders: Box<[SpecializedShader]>,
@@ -23,7 +24,7 @@ pub struct SbtLayout {
     pub(super) hitgroups: Vec<HitGroupEntry>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum HitGroupType {
     Triangles,
     Procedural,
@@ -34,6 +35,7 @@ pub struct HitGroup {
     pub anyhit_shader: Option<SpecializedShader>,
     pub closest_hit_shader: Option<SpecializedShader>,
 }
+#[derive(Debug)]
 pub(super) struct HitGroupEntry {
     pub(super) ty: HitGroupType,
     pub(super) intersection_shader: Option<u32>,

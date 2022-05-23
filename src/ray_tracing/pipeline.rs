@@ -71,6 +71,7 @@ impl Drop for RayTracingPipeline {
         }
     }
 }
+
 pub struct RayTracingPipelineLayout<'a> {
     pub pipeline_layout: &'a PipelineLayout,
     pub sbt_layout: &'a SbtLayout,
@@ -187,7 +188,6 @@ impl RayTracingPipeline {
                 debug_assert!(stages.len() < stages.capacity());
                 // stages cannot be reallocated, since RayTracingPipelineCreateInfoKHR retains a pointer into this array
                 stages.extend(sbt_stages);
-
                 let sbt_groups = std::iter::once(
                     vk::RayTracingShaderGroupCreateInfoKHR::builder() // Raygen Shader
                         .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
@@ -206,7 +206,7 @@ impl RayTracingPipeline {
                         .closest_hit_shader(vk::SHADER_UNUSED_KHR)
                         .build()
                 }))
-                .chain((0..=layout.sbt_layout.callable_shaders.len()).map(|i| {
+                .chain((0..layout.sbt_layout.callable_shaders.len()).map(|i| {
                     vk::RayTracingShaderGroupCreateInfoKHR::builder() // Callable Shader
                         .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
                         .general_shader(i as u32 + 1 + layout.sbt_layout.miss_shaders.len() as u32)
@@ -249,7 +249,7 @@ impl RayTracingPipeline {
                 }));
                 let groups_range = groups.len()
                     ..groups.len()
-                        + 1
+                        + 1 // raygen
                         + layout.sbt_layout.miss_shaders.len()
                         + layout.sbt_layout.callable_shaders.len()
                         + layout.sbt_layout.hitgroups.len();
@@ -257,13 +257,14 @@ impl RayTracingPipeline {
                 debug_assert!(groups.len() < groups.capacity());
                 groups.extend(sbt_groups);
 
-                vk::RayTracingPipelineCreateInfoKHR::builder()
+                let info = vk::RayTracingPipelineCreateInfoKHR::builder()
                     .flags(vk::PipelineCreateFlags::default())
                     .stages(&stages[stages_range])
                     .groups(&groups[groups_range])
                     .max_pipeline_ray_recursion_depth(layout.max_recursion_depth)
                     .layout(layout.pipeline_layout.layout)
-                    .build()
+                    .build();
+                info
             })
             .collect::<Vec<_>>();
 

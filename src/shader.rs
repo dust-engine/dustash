@@ -9,6 +9,12 @@ pub struct Shader {
     pub(crate) module: vk::ShaderModule,
 }
 
+impl std::fmt::Debug for Shader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Shader").field(&self.module).finish()
+    }
+}
+
 impl Drop for Shader {
     fn drop(&mut self) {
         unsafe { self.device.destroy_shader_module(self.module, None) }
@@ -55,7 +61,7 @@ impl Shader {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SpecializedShader {
     pub shader: Arc<Shader>,
     pub specialization: Option<SpecializationInfo>,
@@ -66,7 +72,7 @@ impl PartialEq for SpecializedShader {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct SpecializationInfo {
     pub(super) data: Vec<u8>,
     pub(super) entries: Vec<vk::SpecializationMapEntry>,
