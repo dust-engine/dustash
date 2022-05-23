@@ -1,5 +1,5 @@
 use ash::{prelude::VkResult, vk};
-use std::{ops::Deref, sync::Arc};
+use std::{ffi::c_void, ops::Deref, sync::Arc};
 
 use crate::{sync::CommandsFuture, Device, MemoryHeap, MemoryType};
 
@@ -208,13 +208,11 @@ impl Allocator {
                 )
             }
         }?;
-        let memory_flags = unsafe {
-            self.types[self
-                .allocator
-                .get_allocation_info(&allocation)
-                .unwrap()
-                .memory_type as usize]
-                .property_flags
+        let (memory_flags, ptr) = unsafe {
+            let allocation_info = self.allocator.get_allocation_info(&allocation).unwrap();
+            let memory_flags = self.types[allocation_info.memory_type as usize].property_flags;
+            let ptr = allocation_info.mapped_data;
+            (memory_flags, ptr)
         };
         Ok(MemBuffer {
             allocator: self.clone(),
@@ -223,6 +221,7 @@ impl Allocator {
             size: request.size,
             alignment: request.alignment,
             memory_flags,
+            ptr,
         })
     }
 
@@ -342,7 +341,10 @@ pub struct MemBuffer {
     size: u64,
     alignment: u64,
     pub memory_flags: vk::MemoryPropertyFlags,
+    pub ptr: *mut c_void,
 }
+unsafe impl Send for MemBuffer {}
+unsafe impl Sync for MemBuffer {}
 
 impl HasBuffer for MemBuffer {
     fn raw_buffer(&self) -> vk::Buffer {
@@ -401,11 +403,14 @@ impl MemBuffer {
 
     pub fn map_scoped(&mut self, f: impl FnOnce(&mut [u8]) -> ()) {
         unsafe {
-            let ptr = self
-                .allocator
-                .allocator
-                .map_memory(&mut self.memory)
-                .unwrap();
+            let ptr = if self.ptr.is_null() {
+                self.allocator
+                    .allocator
+                    .map_memory(&mut self.memory)
+                    .unwrap()
+            } else {
+                self.ptr as *mut u8
+            };
             let slice = std::slice::from_raw_parts_mut(ptr, self.size as usize);
             f(slice);
             self.allocator.allocator.unmap_memory(&mut self.memory);

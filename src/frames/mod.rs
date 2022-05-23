@@ -10,6 +10,11 @@ use std::sync::Arc;
 use crate::HasDevice;
 use crate::{surface::Surface, swapchain::SwapchainLoader};
 
+mod resource;
+pub use resource::PerFrame;
+mod uniform;
+pub use uniform::PerFrameUniform;
+
 /// Manages synchronizing and rebuilding a Vulkan swapchain
 pub struct FrameManager {
     swapchain_loader: Arc<SwapchainLoader>,
@@ -45,6 +50,9 @@ impl crate::HasDevice for FrameManager {
 impl FrameManager {
     pub fn num_images(&self) -> usize {
         self.images.len()
+    }
+    pub fn num_frames(&self) -> usize {
+        self.frames.len()
     }
 
     fn current_frame(&self) -> &Frame {
@@ -489,67 +497,5 @@ impl HasImage for AcquiredFrame {
 impl crate::HasDevice for AcquiredFrame {
     fn device(&self) -> &Arc<Device> {
         self.acquire_ready_semaphore.device()
-    }
-}
-
-pub trait PerFrameResource {
-    const PER_IMAGE: bool = false;
-}
-pub struct PerFrame<T: PerFrameResource> {
-    resources: Vec<Option<T>>,
-}
-
-impl<T: PerFrameResource> Default for PerFrame<T> {
-    fn default() -> Self {
-        Self {
-            resources: Vec::new(),
-        }
-    }
-}
-
-impl<T: PerFrameResource> PerFrame<T> {
-    pub fn get(&self, frame: &AcquiredFrame) -> Option<&T> {
-        if frame.invalidate_images {
-            return None;
-        }
-        let index = if T::PER_IMAGE {
-            frame.image_index as usize
-        } else {
-            frame.frame_index
-        };
-        self.resources.get(index).map_or(None, Option::as_ref)
-    }
-    pub fn get_mut(&mut self, frame: &AcquiredFrame) -> Option<&mut T> {
-        if frame.invalidate_images {
-            return None;
-        }
-        let index = if T::PER_IMAGE {
-            frame.image_index as usize
-        } else {
-            frame.frame_index
-        };
-        self.resources.get_mut(index).map_or(None, Option::as_mut)
-    }
-    pub fn get_or_else(
-        &mut self,
-        frame: &AcquiredFrame,
-        force_update: bool,
-        f: impl FnOnce() -> T,
-    ) -> &mut T {
-        let index = if T::PER_IMAGE {
-            frame.image_index as usize
-        } else {
-            frame.frame_index
-        };
-        if self.resources.len() <= index {
-            self.resources.resize_with(index + 1, || None);
-        }
-        let slot = &mut self.resources[index];
-        if frame.invalidate_images || slot.is_none() || force_update {
-            // Drop first, then create new
-            drop(slot.take());
-            *slot = Some(f());
-        }
-        slot.as_mut().unwrap()
     }
 }

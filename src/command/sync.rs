@@ -545,7 +545,7 @@ impl AccessType {
             AccessType::RayTracingShaderWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR,
                 access_mask: vk::AccessFlags::SHADER_WRITE,
-                image_layout: vk::ImageLayout::GENERAL
+                image_layout: vk::ImageLayout::GENERAL,
             },
             AccessType::DepthStencilAttachmentWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags::from_raw(
