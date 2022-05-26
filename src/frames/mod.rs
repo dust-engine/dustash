@@ -367,11 +367,15 @@ impl FrameManager {
         // - Host access to pPresentInfo->pWaitSemaphores[] must be externally synchronized. We have &mut frames, and frame.complete_semaphore
         // was borrowed from &mut frames. Therefore, we do have exclusive ownership on frame.complete_semaphore.
         // - Host access to pPresentInfo->pSwapchains[] must be externally synchronized. We have &mut frames, and thus ownership on frames.swapchain.
-        let suboptimal = self.swapchain.as_mut().unwrap().queue_present(
+        let suboptimal = match self.swapchain.as_mut().unwrap().queue_present(
             present_queue,
             &semaphores,
             frame.image_index,
-        )?;
+        ) {
+            Ok(suboptimal) => suboptimal,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => true,
+            Err(err) => return Err(err),
+        };
         if suboptimal {
             tracing::warn!("suboptimal");
             self.needs_rebuild = true;

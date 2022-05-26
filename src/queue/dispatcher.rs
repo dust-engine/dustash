@@ -283,10 +283,6 @@ impl QueueDispatcher {
         signal_semaphore_count: usize,
         executables_count: usize,
     ) -> VkResult<()> {
-        println!(
-            "Queue {:?} submits {:#?}",
-            self.assigned_queue_type, submissions
-        );
         let mut wait_semaphores: Vec<vk::SemaphoreSubmitInfo> =
             Vec::with_capacity(wait_semaphore_count);
         let mut signal_semaphores: Vec<vk::SemaphoreSubmitInfo> =
