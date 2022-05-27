@@ -17,6 +17,15 @@ pub struct Queue {
     family_index: u32,
 }
 
+impl crate::debug::DebugObject for Queue {
+    const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::QUEUE;
+    fn object_handle(&mut self) -> u64 {
+        unsafe {
+            std::mem::transmute(self.queue)
+        }
+    }
+}
+
 impl crate::HasDevice for Queue {
     fn device(&self) -> &Arc<Device> {
         &self.device

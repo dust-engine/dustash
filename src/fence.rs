@@ -17,6 +17,14 @@ impl crate::HasDevice for Fence {
         &self.device
     }
 }
+impl crate::debug::DebugObject for Fence {
+    const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::FENCE;
+    fn object_handle(&mut self) -> u64 {
+        unsafe {
+            std::mem::transmute(self.fence)
+        }
+    }
+}
 
 impl std::fmt::Debug for Fence {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

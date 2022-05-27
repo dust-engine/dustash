@@ -2,11 +2,26 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::Device;
+use crate::{Device, HasDevice};
 
 pub struct Shader {
     device: Arc<Device>,
     pub(crate) module: vk::ShaderModule,
+}
+
+impl HasDevice for Shader {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl crate::debug::DebugObject for Shader {
+    const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::SHADER_MODULE;
+    fn object_handle(&mut self) -> u64 {
+        unsafe {
+            std::mem::transmute(self.module)
+        }
+    }
 }
 
 impl std::fmt::Debug for Shader {

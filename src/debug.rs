@@ -1,6 +1,6 @@
 use ash::extensions::ext;
 use ash::{prelude::VkResult, vk};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 
 pub struct DebugUtilsMessenger {
     pub(crate) debug_utils: ext::DebugUtils,
@@ -93,4 +93,40 @@ unsafe extern "system" fn debug_utils_callback<'a>(
     // The callback returns a VkBool32, which is interpreted in a layer-specified manner.
     // The application should always return VK_FALSE. The VK_TRUE value is reserved for use in layer development.
     vk::FALSE
+}
+
+/// Vulkan Object that can be associated with a name and/or a tag.
+pub trait DebugObject: crate::HasDevice {
+    fn object_handle(&mut self) -> u64;
+    const OBJECT_TYPE: vk::ObjectType;
+    fn set_name_cstr(&mut self, cstr: &CStr) -> VkResult<()> {
+        unsafe {
+            let raw_device = self.device().handle();
+            let object_handle = self.object_handle();
+            self.device().instance().debug_utils().debug_utils.debug_utils_set_object_name(raw_device, &vk::DebugUtilsObjectNameInfoEXT {
+                object_type: Self::OBJECT_TYPE,
+                object_handle,
+                p_object_name: cstr.as_ptr(),
+                ..Default::default()
+            })?;
+        }
+        Ok(())
+    }
+    fn set_name(&mut self, name: &str) -> VkResult<()> {
+        let cstr = CString::new(name).expect("Name cannot contain null bytes");
+        self.set_name_cstr(cstr.as_c_str())?;
+        Ok(())
+    }
+    fn remove_name(&mut self) {
+        unsafe {
+            let raw_device = self.device().handle();
+            let object_handle = self.object_handle();
+            self.device().instance().debug_utils().debug_utils.debug_utils_set_object_name(raw_device, &vk::DebugUtilsObjectNameInfoEXT {
+                object_type: Self::OBJECT_TYPE,
+                object_handle,
+                p_object_name: std::ptr::null(),
+                ..Default::default()
+            }).unwrap();
+        }
+    }
 }

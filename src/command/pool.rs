@@ -1,7 +1,7 @@
 use ash::{prelude::VkResult, vk};
 use std::sync::{Arc, Mutex};
 
-use crate::Device;
+use crate::{Device, HasDevice};
 
 pub struct CommandPool {
     device: Arc<Device>,
@@ -12,6 +12,17 @@ pub struct CommandPool {
 impl crate::HasDevice for CommandPool {
     fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+}
+
+impl crate::debug::DebugObject for CommandPool {
+    const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::COMMAND_POOL;
+    fn object_handle(&mut self) -> u64 {
+        let pool = self.pool.get_mut().unwrap();
+        let pool: vk::CommandPool = *pool;
+        unsafe {
+            std::mem::transmute(pool)
+        }
     }
 }
 
@@ -145,6 +156,21 @@ impl Drop for CommandPool {
 pub struct CommandBuffer {
     pub(crate) pool: Arc<CommandPool>,
     pub(crate) buffer: vk::CommandBuffer,
+}
+
+impl HasDevice for CommandBuffer {
+    fn device(&self) -> &Arc<Device> {
+        &self.pool.device
+    }
+}
+
+impl crate::debug::DebugObject for CommandBuffer {
+    const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::COMMAND_BUFFER;
+    fn object_handle(&mut self) -> u64 {
+        unsafe {
+            std::mem::transmute(self.buffer)
+        }
+    }
 }
 
 impl Drop for CommandBuffer {

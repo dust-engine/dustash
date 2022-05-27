@@ -1,6 +1,6 @@
 use super::sbt::{HitGroupType, SbtHandles, SbtLayout};
 use crate::shader::SpecializedShader;
-use crate::Device;
+use crate::{Device, HasDevice};
 use ash::extensions::khr;
 use ash::{prelude::VkResult, vk};
 use std::{ops::Deref, sync::Arc};
@@ -8,6 +8,21 @@ use std::{ops::Deref, sync::Arc};
 pub struct PipelineLayout {
     device: Arc<Device>,
     layout: vk::PipelineLayout,
+}
+
+impl HasDevice for PipelineLayout {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl crate::debug::DebugObject for PipelineLayout {
+    const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::PIPELINE_LAYOUT;
+    fn object_handle(&mut self) -> u64 {
+        unsafe {
+            std::mem::transmute(self.layout)
+        }
+    }
 }
 
 impl PipelineLayout {
@@ -64,6 +79,20 @@ impl RayTracingPipeline {
         self.pipeline
     }
 }
+impl HasDevice for RayTracingPipeline {
+    fn device(&self) -> &Arc<Device> {
+        &self.loader.device
+    }
+}
+impl crate::debug::DebugObject for RayTracingPipeline {
+    const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::PIPELINE;
+    fn object_handle(&mut self) -> u64 {
+        unsafe {
+            std::mem::transmute(self.pipeline)
+        }
+    }
+}
+
 impl Drop for RayTracingPipeline {
     fn drop(&mut self) {
         unsafe {

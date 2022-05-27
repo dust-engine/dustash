@@ -19,6 +19,7 @@ impl crate::HasDevice for AccelerationStructureLoader {
         &self.device
     }
 }
+
 impl AccelerationStructureLoader {
     pub fn new(device: Arc<Device>) -> Self {
         let loader = khr::AccelerationStructure::new(device.instance(), &device);
@@ -84,6 +85,15 @@ pub struct AccelerationStructure {
 impl HasDevice for AccelerationStructure {
     fn device(&self) -> &Arc<Device> {
         self.loader.device()
+    }
+}
+
+impl crate::debug::DebugObject for AccelerationStructure {
+    const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::ACCELERATION_STRUCTURE_KHR;
+    fn object_handle(&mut self) -> u64 {
+        unsafe {
+            std::mem::transmute(self.raw)
+        }
     }
 }
 

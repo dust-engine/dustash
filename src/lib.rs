@@ -34,3 +34,4 @@ mod instance;
 
 pub use device::{Device, HasDevice};
 pub use instance::Instance;
+pub use debug::DebugObject;

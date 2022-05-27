@@ -1,7 +1,7 @@
 use ash::{prelude::VkResult, vk};
 use std::{ffi::c_void, ops::Deref, sync::Arc};
 
-use crate::{sync::CommandsFuture, Device, MemoryHeap, MemoryType};
+use crate::{sync::CommandsFuture, Device, MemoryHeap, MemoryType, HasDevice};
 
 use super::buffer::HasBuffer;
 
@@ -349,6 +349,21 @@ unsafe impl Sync for MemBuffer {}
 impl HasBuffer for MemBuffer {
     fn raw_buffer(&self) -> vk::Buffer {
         self.buffer
+    }
+}
+
+impl HasDevice for MemBuffer {
+    fn device(&self) -> &Arc<Device> {
+        self.allocator.device()
+    }
+}
+
+impl crate::debug::DebugObject for MemBuffer {
+    const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::BUFFER;
+    fn object_handle(&mut self) -> u64 {
+        unsafe {
+            std::mem::transmute(self.buffer)
+        }
     }
 }
 

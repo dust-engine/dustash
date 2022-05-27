@@ -22,6 +22,9 @@ impl Instance {
     pub fn entry(&self) -> &Arc<ash::Entry> {
         &self.entry
     }
+    pub fn debug_utils(&self) -> &DebugUtilsMessenger {
+        &self.debug_utils
+    }
 }
 
 impl Deref for Instance {

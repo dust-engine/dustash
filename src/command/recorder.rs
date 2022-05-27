@@ -220,4 +220,12 @@ impl<'a> CommandRecorder<'a> {
             );
         }
     }
+    pub fn push_constants(&mut self, pipeline_layout: &crate::ray_tracing::pipeline::PipelineLayout,
+        stage_flags: vk::ShaderStageFlags,
+        offset: u32,
+        constants: &[u8]) {
+        unsafe {
+            self.device.cmd_push_constants(self.command_buffer, pipeline_layout.raw(), stage_flags, offset, constants)
+        }
+    }
 }
