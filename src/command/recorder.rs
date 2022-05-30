@@ -36,6 +36,7 @@ impl CommandExecutable {
         }
         tracing::debug!(command_buffer = ?self.command_buffer.buffer, "Reset command buffer");
         unsafe {
+            let _guard = self.command_buffer.pool.pool.lock().unwrap();
             self.command_buffer
                 .pool
                 .device()
