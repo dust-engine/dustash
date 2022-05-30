@@ -121,6 +121,10 @@ impl CommandsFuture {
             stage,
         }
     }
+
+    pub fn queue_family_index(&self) -> u32 {
+        self.queues.of_index(self.queue).family_index()
+    }
 }
 
 pub struct CommandsStageFuture<'a> {

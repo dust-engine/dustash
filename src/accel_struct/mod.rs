@@ -185,7 +185,7 @@ impl AccelerationStructure {
                 instances: vk::AccelerationStructureGeometryInstancesDataKHR {
                     array_of_pointers: vk::FALSE,
                     data: vk::DeviceOrHostAddressConstKHR {
-                        device_address: instances_buffer.get_device_address(),
+                        device_address: instances_buffer.device_address(),
                     },
                     ..Default::default()
                 },
@@ -226,7 +226,7 @@ impl AccelerationStructure {
                 ..Default::default()
             })
             .unwrap();
-        build_geometry_info.scratch_data.device_address = scratch_buffer.get_device_address();
+        build_geometry_info.scratch_data.device_address = scratch_buffer.device_address();
 
         let mut accel_struct = AccelerationStructure::new(
             loader.clone(),

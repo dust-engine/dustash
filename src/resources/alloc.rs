@@ -9,11 +9,11 @@ pub use vk::BufferUsageFlags;
 pub use vk_mem::{Alloc, Allocation, AllocationCreateFlags, MemoryUsage};
 
 pub struct Allocator {
-    allocator: vk_mem::Allocator,
+    pub(crate) allocator: vk_mem::Allocator,
     device: Arc<Device>,
     memory_model: DeviceMemoryModel,
-    heaps: Box<[MemoryHeap]>,
-    types: Box<[MemoryType]>,
+    pub(crate) heaps: Box<[MemoryHeap]>,
+    pub(crate) types: Box<[MemoryType]>,
 }
 impl crate::HasDevice for Allocator {
     fn device(&self) -> &Arc<Device> {
@@ -89,7 +89,7 @@ impl Allocator {
         }
     }
 
-    fn create_info_by_scenario(
+    pub(crate) fn create_info_by_scenario(
         &self,
         flags: vk_mem::AllocationCreateFlags,
         scenario: &MemoryAllocScenario,
@@ -214,6 +214,17 @@ impl Allocator {
             let ptr = allocation_info.mapped_data;
             (memory_flags, ptr)
         };
+        let device_address = if request.usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
+            unsafe {
+                self.device.get_buffer_device_address(
+                    &vk::BufferDeviceAddressInfo::builder()
+                        .buffer(buffer)
+                        .build(),
+                )
+            }
+        } else {
+            0
+        };
         Ok(MemBuffer {
             allocator: self.clone(),
             buffer,
@@ -222,6 +233,7 @@ impl Allocator {
             alignment: request.alignment,
             memory_flags,
             ptr,
+            device_address,
         })
     }
 
@@ -341,6 +353,7 @@ pub struct MemBuffer {
     size: u64,
     alignment: u64,
     pub memory_flags: vk::MemoryPropertyFlags,
+    device_address: vk::DeviceAddress,
     pub ptr: *mut c_void,
 }
 unsafe impl Send for MemBuffer {}
@@ -406,7 +419,7 @@ impl MemBuffer {
     }
     */
 
-    pub fn get_device_address(&self) -> vk::DeviceAddress {
+    pub fn device_address(&self) -> vk::DeviceAddress {
         unsafe {
             self.allocator.device.get_buffer_device_address(
                 &vk::BufferDeviceAddressInfo::builder()

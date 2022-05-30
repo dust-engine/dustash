@@ -404,7 +404,7 @@ impl Sbt {
             });
         }
 
-        let base_device_address = target_membuffer.get_device_address();
+        let base_device_address = target_membuffer.device_address();
         assert!(base_device_address % pipeline.handles.group_base_alignment as u64 == 0);
         Sbt {
             pipeline,

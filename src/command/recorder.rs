@@ -137,6 +137,39 @@ impl<'a> CommandRecorder<'a> {
         self
     }
 
+    pub fn copy_buffer_to_image<
+        SRC: HasBuffer + Send + Sync + 'static,
+        DST: HasImage + Send + Sync + 'static,
+    >(
+        &mut self,
+        src_buffer: SRC,
+        dst_image: DST,
+        dst_image_layout: vk::ImageLayout,
+        regions: &[vk::BufferImageCopy],
+    ) -> &mut Self {
+        // Safety: Host Syncronization rule for vkCmdCopyBuffer:
+        // - Host access to commandBuffer must be externally synchronized.
+        // - Host access to the VkCommandPool that commandBuffer was allocated from must be externally synchronized.
+        // We have &mut self and self.command_buffer is &mut, so we have exclusive control on self.command_buffer.buffer.
+        // self.command_buffer.pool is a &mut, so we have exclusive control on self.command_buffer.pool.pool.
+        unsafe {
+            self.device.cmd_copy_buffer_to_image(
+                self.command_buffer,
+                src_buffer.raw_buffer(),
+                dst_image.raw_image(),
+                dst_image_layout,
+                regions,
+            );
+        }
+        if std::mem::needs_drop::<SRC>() {
+            self.referenced_resources.push(Box::new(src_buffer));
+        }
+        if std::mem::needs_drop::<DST>() {
+            self.referenced_resources.push(Box::new(dst_image));
+        }
+        self
+    }
+
     pub fn clear_color_image<T: HasImage + Send + Sync + 'static>(
         &mut self,
         image: T,

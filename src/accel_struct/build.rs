@@ -68,7 +68,7 @@ impl AccelerationStructureBuilder {
                 ..Default::default()
             })
             .unwrap();
-        let scratch_buffer_device_address = scratch_buffer.get_device_address();
+        let scratch_buffer_device_address = scratch_buffer.device_address();
 
         // Create build infos
         let mut current_scratch_buffer_device_address = scratch_buffer_device_address;
@@ -178,7 +178,7 @@ fn aabbs_to_geometry_infos(
             geometry: vk::AccelerationStructureGeometryDataKHR {
                 aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
                     data: vk::DeviceOrHostAddressConstKHR {
-                        device_address: data.get_device_address(),
+                        device_address: data.device_address(),
                     },
                     stride: *stride as u64,
                     ..Default::default()
