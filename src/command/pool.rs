@@ -20,9 +20,7 @@ impl crate::debug::DebugObject for CommandPool {
     fn object_handle(&mut self) -> u64 {
         let pool = self.pool.get_mut().unwrap();
         let pool: vk::CommandPool = *pool;
-        unsafe {
-            std::mem::transmute(pool)
-        }
+        unsafe { std::mem::transmute(pool) }
     }
 }
 
@@ -167,9 +165,7 @@ impl HasDevice for CommandBuffer {
 impl crate::debug::DebugObject for CommandBuffer {
     const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::COMMAND_BUFFER;
     fn object_handle(&mut self) -> u64 {
-        unsafe {
-            std::mem::transmute(self.buffer)
-        }
+        unsafe { std::mem::transmute(self.buffer) }
     }
 }
 

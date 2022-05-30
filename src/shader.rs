@@ -18,9 +18,7 @@ impl HasDevice for Shader {
 impl crate::debug::DebugObject for Shader {
     const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::SHADER_MODULE;
     fn object_handle(&mut self) -> u64 {
-        unsafe {
-            std::mem::transmute(self.module)
-        }
+        unsafe { std::mem::transmute(self.module) }
     }
 }
 

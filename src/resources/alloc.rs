@@ -1,7 +1,7 @@
 use ash::{prelude::VkResult, vk};
 use std::{ffi::c_void, ops::Deref, sync::Arc};
 
-use crate::{sync::CommandsFuture, Device, MemoryHeap, MemoryType, HasDevice};
+use crate::{sync::CommandsFuture, Device, HasDevice, MemoryHeap, MemoryType};
 
 use super::buffer::HasBuffer;
 
@@ -214,7 +214,10 @@ impl Allocator {
             let ptr = allocation_info.mapped_data;
             (memory_flags, ptr)
         };
-        let device_address = if request.usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
+        let device_address = if request
+            .usage
+            .contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+        {
             unsafe {
                 self.device.get_buffer_device_address(
                     &vk::BufferDeviceAddressInfo::builder()
@@ -374,9 +377,7 @@ impl HasDevice for MemBuffer {
 impl crate::debug::DebugObject for MemBuffer {
     const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::BUFFER;
     fn object_handle(&mut self) -> u64 {
-        unsafe {
-            std::mem::transmute(self.buffer)
-        }
+        unsafe { std::mem::transmute(self.buffer) }
     }
 }
 

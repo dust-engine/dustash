@@ -20,9 +20,7 @@ pub struct Queue {
 impl crate::debug::DebugObject for Queue {
     const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::QUEUE;
     fn object_handle(&mut self) -> u64 {
-        unsafe {
-            std::mem::transmute(self.queue)
-        }
+        unsafe { std::mem::transmute(self.queue) }
     }
 }
 

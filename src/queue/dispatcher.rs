@@ -75,15 +75,6 @@ impl QueueDispatcher {
         }));
         self
     }
-    /// This only buffers the fence command and it won't actually call vkQueueSubmit.
-    /// Calling vkQueueSubmit requires exclusive access to the vkQueue, so it's better to wait until
-    /// the end of the frame to do this in one go.
-    /// Note that this is only going to influence queue submits. Won't do anything for sparse binds.
-    pub fn fence(&self, fence: Arc<Fence>) -> &Self {
-        self.command_count.fetch_add(1, Ordering::Relaxed);
-        self.commands.push(QueueCommand::Fence(fence));
-        self
-    }
     pub fn is_empty(&self) -> bool {
         self.command_count.load(Ordering::Relaxed) == 0
     }
@@ -107,11 +98,11 @@ impl QueueDispatcher {
         self
     }
 
-    // The returned QueueSubmissionFence needs to be waited on and dropped
-    pub fn flush(&mut self) -> VkResult<()> {
+    #[must_use = "Call block(), wait() or wait_detached() to ensure that the render resources are released after submission completion."]
+    pub fn flush(&mut self) -> VkResult<Option<QueueSubmissionFence>> {
         let num_submissions = *self.command_count.get_mut();
         if num_submissions == 0 {
-            return Ok(());
+            return Ok(None);
         }
         *self.command_count.get_mut() = 0;
         let mut submissions: Vec<Submission> = Vec::new();
@@ -132,22 +123,6 @@ impl QueueDispatcher {
                         signal_semaphore_count += op.signal_semaphores.len();
                         executables_count += op.executables.len();
                         submissions.push(op);
-                    }
-                    QueueCommand::Fence(fence) => {
-                        // Submit existing fences
-                        let fenced_submissions = std::mem::take(&mut submissions);
-                        unsafe {
-                            self.queue_submit(
-                                fenced_submissions,
-                                fence,
-                                wait_semaphore_count,
-                                signal_semaphore_count,
-                                executables_count,
-                            )?;
-                        }
-                        wait_semaphore_count = 0;
-                        signal_semaphore_count = 0;
-                        executables_count = 0;
                     }
                     QueueCommand::BindSparse(bind) => {
                         bind_semaphore_count +=
@@ -172,20 +147,18 @@ impl QueueDispatcher {
             }
         }
         // If there are still some unfenced submissions
-        if !submissions.is_empty() {
-            let fence = Fence::new(self.queue.device.clone(), false)?;
-            let fence = Arc::new(fence);
-            unsafe {
-                self.queue_submit(
-                    submissions,
-                    fence,
-                    wait_semaphore_count,
-                    signal_semaphore_count,
-                    executables_count,
-                )?;
-            }
-        }
-        Ok(())
+        assert!(!submissions.is_empty());
+        let fence = Fence::new(self.queue.device.clone(), false)?;
+        let task = unsafe {
+            self.queue_submit(
+                submissions,
+                fence,
+                wait_semaphore_count,
+                signal_semaphore_count,
+                executables_count,
+            )?
+        };
+        Ok(Some(task))
     }
 
     unsafe fn queue_bind_sparse(
@@ -278,11 +251,11 @@ impl QueueDispatcher {
     unsafe fn queue_submit(
         &mut self,
         submissions: Vec<Submission>,
-        fence: Arc<Fence>,
+        fence: Fence,
         wait_semaphore_count: usize,
         signal_semaphore_count: usize,
         executables_count: usize,
-    ) -> VkResult<()> {
+    ) -> VkResult<QueueSubmissionFence> {
         let mut wait_semaphores: Vec<vk::SemaphoreSubmitInfo> =
             Vec::with_capacity(wait_semaphore_count);
         let mut signal_semaphores: Vec<vk::SemaphoreSubmitInfo> =
@@ -329,31 +302,43 @@ impl QueueDispatcher {
             .submit_raw2(submit_infos.as_slice(), fence.fence)?;
 
         let submission = QueueSubmissionFence {
-            fence,
-            _submissions: submissions,
+            fences: vec![fence],
+            submissions: submissions,
         };
-        submission.wait_detached();
-        Ok(())
+        Ok(submission)
     }
 }
 
 pub struct QueueSubmissionFence {
-    fence: Arc<Fence>,
-    _submissions: Vec<Submission>,
+    fences: Vec<Fence>,
+    submissions: Vec<Submission>,
 }
 
 impl QueueSubmissionFence {
-    pub fn wait(self) -> VkResult<()> {
-        self.fence.wait()?;
-        drop(self);
+    pub fn new() -> Self {
+        Self {
+            fences: Vec::new(),
+            submissions: Vec::new(),
+        }
+    }
+    pub fn block(self) -> VkResult<()> {
+        Fence::join(self.fences).wait().unwrap();
+        drop(self.submissions);
         Ok(())
+    }
+    pub fn wait(self) -> blocking::Task<()> {
+        blocking::unblock(|| {
+            self.block().unwrap();
+        })
     }
 
     pub fn wait_detached(self) {
-        let task = blocking::unblock(|| {
-            self.wait().unwrap();
-        });
+        let task = self.wait();
         task.detach();
+    }
+    pub fn merge(&mut self, mut other: Self) {
+        self.fences.append(&mut other.fences);
+        self.submissions.append(&mut other.submissions);
     }
 }
 
@@ -473,6 +458,5 @@ struct BindSparse {
 }
 enum QueueCommand {
     Submit(Submission),
-    Fence(Arc<Fence>),
     BindSparse(BindSparse),
 }

@@ -35,6 +35,19 @@ impl<T, const PER_IMAGE: bool> PerFrame<T, PER_IMAGE> {
         };
         self.resources.get_mut(index).map_or(None, Option::as_mut)
     }
+
+    pub fn set(&mut self, frame: &AcquiredFrame, item: T) {
+        let index = if PER_IMAGE {
+            frame.image_index as usize
+        } else {
+            frame.frame_index
+        };
+        if self.resources.len() <= index {
+            self.resources.resize_with(index + 1, || None);
+        }
+        let slot = &mut self.resources[index];
+        *slot = Some(item);
+    }
     pub fn get_or_else(
         &mut self,
         frame: &AcquiredFrame,

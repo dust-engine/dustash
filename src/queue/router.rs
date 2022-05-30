@@ -72,14 +72,18 @@ impl Queues {
         }
     }
 
-    pub fn flush(&mut self) -> VkResult<()> {
+    #[must_use]
+    pub fn flush(&mut self) -> VkResult<blocking::Task<()>> {
         // We take ownership of AcquiredFrame here, ensuring that Swapchain Acquire occured before submitting command buffers.
         // Note that acquire and present calls should be interleaved. Always present your existing AcquiredFrame before acquiring the next one.
-
+        let mut submission = super::dispatcher::QueueSubmissionFence::new();
         for dispatcher in self.queues.iter_mut() {
-            dispatcher.flush()?;
+            let new_submission = dispatcher.flush()?;
+            if let Some(new_submission) = new_submission {
+                submission.merge(new_submission);
+            }
         }
-        Ok(())
+        Ok(submission.wait())
     }
 
     pub fn present(

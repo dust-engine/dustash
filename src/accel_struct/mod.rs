@@ -91,9 +91,7 @@ impl HasDevice for AccelerationStructure {
 impl crate::debug::DebugObject for AccelerationStructure {
     const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::ACCELERATION_STRUCTURE_KHR;
     fn object_handle(&mut self) -> u64 {
-        unsafe {
-            std::mem::transmute(self.raw)
-        }
+        unsafe { std::mem::transmute(self.raw) }
     }
 }
 

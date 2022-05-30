@@ -1,8 +1,8 @@
+use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
-use ash::{vk, prelude::VkResult};
 
-use crate::{Device, HasDevice, DebugObject};
-use super::alloc::{Allocator, Allocation, MemoryAllocScenario, AllocationCreateFlags};
+use super::alloc::{Allocation, AllocationCreateFlags, Allocator, MemoryAllocScenario};
+use crate::{DebugObject, Device, HasDevice};
 
 pub trait HasImage {
     fn raw_image(&self) -> vk::Image;
@@ -27,9 +27,7 @@ impl HasDevice for Image {
 
 impl DebugObject for Image {
     fn object_handle(&mut self) -> u64 {
-        unsafe {
-            std::mem::transmute(self.image)
-        }
+        unsafe { std::mem::transmute(self.image) }
     }
 
     const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::IMAGE;
@@ -37,13 +35,8 @@ impl DebugObject for Image {
 
 impl Image {
     pub fn new(device: Arc<Device>, info: &vk::ImageCreateInfo) -> VkResult<Self> {
-        let image = unsafe {
-            device.create_image(info, None)?
-        };
-        Ok(Self {
-            device,
-            image,
-        })
+        let image = unsafe { device.create_image(info, None)? };
+        Ok(Self { device, image })
     }
 }
 
@@ -60,14 +53,12 @@ impl<T: HasImage> HasImage for Arc<T> {
     }
 }
 
-
 impl Drop for Image {
     fn drop(&mut self) {
         tracing::debug!(image = ?self.image, "drop image");
         unsafe { self.device.destroy_image(self.image, None) }
     }
 }
-
 
 /// Image bound to allocator memory
 pub struct MemImage {
@@ -94,13 +85,11 @@ impl Drop for MemImage {
     }
 }
 
-
-
 #[derive(Clone)]
 pub struct ImageRequest<'a> {
     pub scenario: MemoryAllocScenario,
     pub allocation_flags: AllocationCreateFlags,
-    
+
     pub image_type: vk::ImageType,
     pub format: vk::Format,
     pub extent: vk::Extent3D,
@@ -118,7 +107,7 @@ impl<'a> Default for ImageRequest<'a> {
         Self {
             scenario: MemoryAllocScenario::DeviceAccess,
             allocation_flags: AllocationCreateFlags::empty(),
-            
+
             image_type: vk::ImageType::TYPE_2D,
             format: vk::Format::R8G8B8A8_UNORM,
             extent: vk::Extent3D::default(),
@@ -133,8 +122,6 @@ impl<'a> Default for ImageRequest<'a> {
         }
     }
 }
-
-
 
 impl Allocator {
     pub fn allocate_image(self: &Arc<Self>, image_request: &ImageRequest) -> VkResult<MemImage> {
@@ -155,10 +142,10 @@ impl Allocator {
             initial_layout: image_request.initial_layout,
             ..Default::default()
         };
-        let create_info = self.create_info_by_scenario(image_request.allocation_flags, &image_request.scenario);
-        let (image, allocation) = unsafe {
-            self.allocator.create_image(&build_info, &create_info)
-        }?;
+        let create_info =
+            self.create_info_by_scenario(image_request.allocation_flags, &image_request.scenario);
+        let (image, allocation) =
+            unsafe { self.allocator.create_image(&build_info, &create_info) }?;
         let memory_flags = unsafe {
             let allocation_info = self.allocator.get_allocation_info(&allocation).unwrap();
             let memory_flags = self.types[allocation_info.memory_type as usize].property_flags;
@@ -168,7 +155,7 @@ impl Allocator {
             allocator: self.clone(),
             image,
             memory: allocation,
-            memory_flags
+            memory_flags,
         })
     }
 }

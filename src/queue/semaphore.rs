@@ -20,9 +20,7 @@ impl crate::HasDevice for Semaphore {
 impl crate::debug::DebugObject for Semaphore {
     const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::SEMAPHORE;
     fn object_handle(&mut self) -> u64 {
-        unsafe {
-            std::mem::transmute(self.semaphore)
-        }
+        unsafe { std::mem::transmute(self.semaphore) }
     }
 }
 

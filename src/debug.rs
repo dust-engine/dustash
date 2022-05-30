@@ -103,12 +103,19 @@ pub trait DebugObject: crate::HasDevice {
         unsafe {
             let raw_device = self.device().handle();
             let object_handle = self.object_handle();
-            self.device().instance().debug_utils().debug_utils.debug_utils_set_object_name(raw_device, &vk::DebugUtilsObjectNameInfoEXT {
-                object_type: Self::OBJECT_TYPE,
-                object_handle,
-                p_object_name: cstr.as_ptr(),
-                ..Default::default()
-            })?;
+            self.device()
+                .instance()
+                .debug_utils()
+                .debug_utils
+                .debug_utils_set_object_name(
+                    raw_device,
+                    &vk::DebugUtilsObjectNameInfoEXT {
+                        object_type: Self::OBJECT_TYPE,
+                        object_handle,
+                        p_object_name: cstr.as_ptr(),
+                        ..Default::default()
+                    },
+                )?;
         }
         Ok(())
     }
@@ -121,12 +128,20 @@ pub trait DebugObject: crate::HasDevice {
         unsafe {
             let raw_device = self.device().handle();
             let object_handle = self.object_handle();
-            self.device().instance().debug_utils().debug_utils.debug_utils_set_object_name(raw_device, &vk::DebugUtilsObjectNameInfoEXT {
-                object_type: Self::OBJECT_TYPE,
-                object_handle,
-                p_object_name: std::ptr::null(),
-                ..Default::default()
-            }).unwrap();
+            self.device()
+                .instance()
+                .debug_utils()
+                .debug_utils
+                .debug_utils_set_object_name(
+                    raw_device,
+                    &vk::DebugUtilsObjectNameInfoEXT {
+                        object_type: Self::OBJECT_TYPE,
+                        object_handle,
+                        p_object_name: std::ptr::null(),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
         }
     }
 }

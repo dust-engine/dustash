@@ -19,9 +19,7 @@ impl HasDevice for PipelineLayout {
 impl crate::debug::DebugObject for PipelineLayout {
     const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::PIPELINE_LAYOUT;
     fn object_handle(&mut self) -> u64 {
-        unsafe {
-            std::mem::transmute(self.layout)
-        }
+        unsafe { std::mem::transmute(self.layout) }
     }
 }
 
@@ -87,9 +85,7 @@ impl HasDevice for RayTracingPipeline {
 impl crate::debug::DebugObject for RayTracingPipeline {
     const OBJECT_TYPE: vk::ObjectType = vk::ObjectType::PIPELINE;
     fn object_handle(&mut self) -> u64 {
-        unsafe {
-            std::mem::transmute(self.pipeline)
-        }
+        unsafe { std::mem::transmute(self.pipeline) }
     }
 }
 

@@ -32,6 +32,7 @@ pub mod sync;
 mod device;
 mod instance;
 
+pub use blocking::Task;
+pub use debug::DebugObject;
 pub use device::{Device, HasDevice};
 pub use instance::Instance;
-pub use debug::DebugObject;
