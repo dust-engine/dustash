@@ -1,15 +1,24 @@
 use std::sync::{Arc, Mutex};
 
-use crate::Device;
-
 use ash::{prelude::VkResult, vk};
 
+use crate::{Device, HasDevice};
+
+use super::{DescriptorSet, DescriptorSetLayout};
+
 // Make pool non-clone, non-copy
-struct DescriptorPoolInner(vk::DescriptorPool);
+pub(super) struct DescriptorPoolInner(pub(super) vk::DescriptorPool);
 
 pub struct DescriptorPool {
     device: Arc<Device>,
-    raw: Mutex<DescriptorPoolInner>,
+    pub(super) raw: Mutex<DescriptorPoolInner>,
+    pub(super) free_individual_desc_sets: bool,
+}
+
+impl HasDevice for DescriptorPool {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 impl DescriptorPool {
@@ -17,10 +26,14 @@ impl DescriptorPool {
         device: Arc<Device>,
         info: &vk::DescriptorPoolCreateInfo,
     ) -> VkResult<DescriptorPool> {
+        let free_individual_desc_sets = info
+            .flags
+            .contains(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET);
         let raw = unsafe { device.create_descriptor_pool(info, None)? };
         Ok(DescriptorPool {
             device,
             raw: Mutex::new(DescriptorPoolInner(raw)),
+            free_individual_desc_sets,
         })
     }
     pub fn allocate<'a>(
@@ -75,54 +88,6 @@ impl Drop for DescriptorPool {
         tracing::info!(device = ?raw.0, "drop descriptor pool");
         unsafe {
             self.device.destroy_descriptor_pool(raw.0, None);
-        }
-    }
-}
-
-pub struct DescriptorSetLayout {
-    device: Arc<Device>,
-    raw: vk::DescriptorSetLayout,
-}
-impl DescriptorSetLayout {
-    pub fn new(device: Arc<Device>, info: &vk::DescriptorSetLayoutCreateInfo) -> VkResult<Self> {
-        let raw = unsafe { device.create_descriptor_set_layout(info, None)? };
-        Ok(Self { device, raw })
-    }
-    pub fn raw(&self) -> vk::DescriptorSetLayout {
-        self.raw
-    }
-}
-impl Drop for DescriptorSetLayout {
-    fn drop(&mut self) {
-        tracing::info!(device = ?self.raw, "destroy descriptor layout");
-        unsafe {
-            self.device.destroy_descriptor_set_layout(self.raw, None);
-        }
-    }
-}
-
-pub struct DescriptorSet {
-    raw: vk::DescriptorSet,
-    pool: Arc<DescriptorPool>,
-}
-impl DescriptorSet {
-    pub fn raw(&self) -> vk::DescriptorSet {
-        self.raw
-    }
-}
-impl Drop for DescriptorSet {
-    fn drop(&mut self) {
-        let raw_pool = self.pool.raw.lock().unwrap();
-        tracing::info!(device = ?raw_pool.0, "free descriptor set");
-        unsafe {
-            (self.pool.device.fp_v1_0().free_descriptor_sets)(
-                self.pool.device.handle(),
-                raw_pool.0,
-                1,
-                &self.raw,
-            )
-            .result()
-            .unwrap();
         }
     }
 }

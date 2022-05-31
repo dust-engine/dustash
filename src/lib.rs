@@ -9,6 +9,7 @@
 #![feature(int_roundings)]
 #![feature(core_ffi_c)]
 #![feature(iterator_try_collect)]
+#![feature(array_zip)]
 
 use std::ops::Deref;
 

@@ -159,3 +159,48 @@ impl Allocator {
         })
     }
 }
+
+pub struct ImageView<T: HasImage> {
+    device: Arc<Device>,
+    image: T,
+    view: vk::ImageView,
+}
+impl<T: HasImage> ImageView<T> {
+    pub fn new(
+        device: Arc<Device>,
+        image: T,
+        view_type: vk::ImageViewType,
+        format: vk::Format,
+        components: vk::ComponentMapping,
+        subresource_range: vk::ImageSubresourceRange,
+    ) -> VkResult<Self> {
+        let view = unsafe {
+            device.create_image_view(
+                &vk::ImageViewCreateInfo {
+                    image: image.raw_image(),
+                    view_type,
+                    format,
+                    components,
+                    subresource_range,
+                    ..Default::default()
+                },
+                None,
+            )?
+        };
+        Ok(Self {
+            device,
+            image,
+            view,
+        })
+    }
+    pub fn raw_image_view(&self) -> vk::ImageView {
+        self.view
+    }
+}
+impl<T: HasImage> Drop for ImageView<T> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_image_view(self.view, None);
+        }
+    }
+}
