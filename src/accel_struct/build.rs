@@ -1,3 +1,4 @@
+use std::alloc::Layout;
 use std::{ops::Range, sync::Arc};
 
 use super::AccelerationStructure;
@@ -201,8 +202,7 @@ impl AabbBlasBuilder {
         }
     }
     /// T: The type of the interleaved data.
-    pub fn add_geometry<T>(&mut self, primitives: Arc<MemBuffer>, flags: vk::GeometryFlagsKHR) {
-        use std::alloc::Layout;
+    pub fn add_geometry(&mut self, primitives: Arc<MemBuffer>, flags: vk::GeometryFlagsKHR, layout: Layout) {
         // There might be two cases where vk::AabbPositionsKHR aren't layed out with a stride = 24
         // 1. The user wants to interleave some other metadata between vk::AabbPositionsKHR.
         //    Vulkan only guarantees that the intersection shader will be called for items within the AABB,
@@ -213,7 +213,6 @@ impl AabbBlasBuilder {
         //     would be very rare, so the design of the API does not consider this.
         let stride = {
             // verify that the layout is OK
-            let layout = Layout::new::<(vk::AabbPositionsKHR, T)>();
             let padding_in_slice = layout.padding_needed_for(layout.align());
             // VUID-VkAccelerationStructureGeometryAabbsDataKHR-stride-03545: stride must be a multiple of 8
             let padding_in_buffer = layout.padding_needed_for(8);
