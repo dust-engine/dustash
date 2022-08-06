@@ -430,6 +430,38 @@ impl MemBuffer {
         }
     }
 
+    pub fn device_local(&self) -> bool {
+        self.memory_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+    }
+
+    pub fn make_device_local(self: Arc<Self>, commands_future: &mut crate::sync::CommandsFuture) -> Arc<Self> {
+        if self.device_local() {
+            return self
+        }
+        let size = self.size();
+
+        let buffer = self.allocator.allocate_buffer(&BufferRequest {
+            size,
+            alignment: self.alignment(),
+            usage: ash::vk::BufferUsageFlags::STORAGE_BUFFER | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | ash::vk::BufferUsageFlags::TRANSFER_DST,
+            scenario: MemoryAllocScenario::DeviceAccess,
+            allocation_flags: AllocationCreateFlags::MAPPED,
+            ..Default::default()
+        }).unwrap();
+        let buffer = Arc::new(buffer);
+
+        commands_future.then_commands(|mut recorder| {
+            recorder.copy_buffer(self, buffer.clone(), &[
+                ash::vk::BufferCopy {
+                    src_offset: 0,
+                    dst_offset: 0,
+                    size,
+                }
+            ]);
+        });
+        buffer
+    }
+
     pub fn map_scoped(&mut self, f: impl FnOnce(&mut [u8]) -> ()) {
         unsafe {
             let ptr = if self.ptr.is_null() {

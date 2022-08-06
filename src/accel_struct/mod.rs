@@ -159,7 +159,11 @@ impl AccelerationStructure {
             .allocate_buffer_with_data(
                 BufferRequest {
                     size: source_buffer_size as u64,
-                    alignment: 0,
+                    // For any element of pInfos[i].pGeometries or pInfos[i].ppGeometries with a geometryType of
+                    // VK_GEOMETRY_TYPE_INSTANCES_KHR, if geometry.arrayOfPointers is VK_FALSE, geometry.instances.data.deviceAddress
+                    // must be aligned to 16 bytes
+                    // (https://vulkan.lunarg.com/doc/view/1.3.204.1/windows/1.3-extensions/vkspec.html#VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03715)
+                    alignment: 16,
                     usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                     scenario: MemoryAllocScenario::AssetBuffer,
