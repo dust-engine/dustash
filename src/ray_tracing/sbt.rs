@@ -169,6 +169,17 @@ pub struct Sbt {
     pub(super) callable_sbt: vk::StridedDeviceAddressRegionKHR,
 }
 
+impl std::fmt::Debug for Sbt  {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Sbt")
+            .field("raygen_sbt", &self.raygen_sbt)
+            .field("miss_sbt", &self.miss_sbt)
+            .field("hit_sbt", &self.hit_sbt)
+            .field("callable_sbt", &self.callable_sbt)
+            .finish()
+    }
+}
+
 impl Sbt {
     /// Compile the SBT data and put them into the allocated buffer.
     ///
@@ -292,14 +303,15 @@ impl Sbt {
 
         fn set_sbt_item<T: Copy>(
             sbt_slice: &mut [u8],
-            item: T,
+            inline_data: T,
             handle: &[u8],
             handle_layout: &Layout,
         ) {
-            sbt_slice[..handle.len()].copy_from_slice(handle);
+            sbt_slice[..handle.len()].copy_from_slice(handle); // Copy handle
             unsafe {
+                // Copy inline data
                 std::ptr::copy_nonoverlapping(
-                    &item as *const _ as *const u8,
+                    &inline_data as *const _ as *const u8,
                     sbt_slice[handle_layout.pad_to_align().size()..].as_mut_ptr(),
                     Layout::new::<T>().size(),
                 )
@@ -337,7 +349,7 @@ impl Sbt {
                 }
             }
             {
-                // Copy rmiss records
+                // Copy callable records
                 let front = raygen_layout
                     .extend(raymiss_layout)
                     .unwrap()
@@ -406,11 +418,14 @@ impl Sbt {
 
         let base_device_address = target_membuffer.device_address();
         assert!(base_device_address % pipeline.handles.group_base_alignment as u64 == 0);
-        Sbt {
+        let sbt = Sbt {
             pipeline,
             buf: target_membuffer,
             raygen_sbt: vk::StridedDeviceAddressRegionKHR {
                 device_address: base_device_address,
+                // VUID-vkCmdTraceRaysKHR-size-04023: The size member of pRayGenShaderBindingTable must be equal to its stride member
+                // TODO: VUID-vkCmdTraceRaysKHR-pRayG enShaderBindingTable-03680: If the buffer from whichpRayGenShaderBindingTable->deviceAddress
+                // was queried is non-sparse then it must be bound completely and contiguously to a single VkDeviceMemory object
                 stride: raygen_layout.pad_to_align().size() as u64,
                 size: raygen_layout.pad_to_align().size() as u64,
             },
@@ -421,19 +436,22 @@ impl Sbt {
             },
             callable_sbt: vk::StridedDeviceAddressRegionKHR {
                 device_address: base_device_address
-                    + raygen_layout.pad_to_align().size() as u64
-                    + raymiss_layout.pad_to_align().size() as u64,
+                    + raygen_layout.extend(raymiss_layout).unwrap().0
+                    .pad_to_align().size() as u64,
                 stride: callable_layout_one.pad_to_align().size() as u64,
                 size: callable_layout_one.pad_to_align().size() as u64,
             },
             hit_sbt: vk::StridedDeviceAddressRegionKHR {
                 device_address: base_device_address
-                    + raygen_layout.pad_to_align().size() as u64
-                    + raymiss_layout.pad_to_align().size() as u64
-                    + callable_layout.pad_to_align().size() as u64,
+                    + raygen_layout.extend(raymiss_layout).unwrap().0
+                    .extend(callable_layout).unwrap().0
+                    .pad_to_align().size() as u64,
                 stride: hitgroup_layout_one.pad_to_align().size() as u64,
                 size: hitgroup_layout.pad_to_align().size() as u64,
             },
-        }
+        };
+        sbt
     }
 }
+
+// | raygen: 64 bytes | rmiss: 64 bytes | callable: 2112 bytes | hitgroup: 64 bytes |
