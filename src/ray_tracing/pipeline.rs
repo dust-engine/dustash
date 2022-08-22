@@ -141,15 +141,11 @@ impl RayTracingPipeline {
         ) -> (vk::PipelineShaderStageCreateInfo, vk::SpecializationInfo) {
             static SHADER_ENTRY_NAME_MAIN: &std::ffi::CStr =
                 unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"main\0") };
-            let specialization_info = if let Some(info) = module.specialization.as_ref() {
-                vk::SpecializationInfo {
-                    map_entry_count: info.entries.len() as u32,
-                    p_map_entries: info.entries.as_ptr(),
-                    data_size: info.data.len(),
-                    p_data: info.data.as_ptr() as *const std::ffi::c_void,
-                }
-            } else {
-                vk::SpecializationInfo::default()
+            let specialization_info = vk::SpecializationInfo {
+                map_entry_count: module.specialization.entries.len() as u32,
+                p_map_entries: module.specialization.entries.as_ptr(),
+                data_size: module.specialization.data.len(),
+                p_data: module.specialization.data.as_ptr() as *const std::ffi::c_void,
             };
             (
                 vk::PipelineShaderStageCreateInfo::builder()

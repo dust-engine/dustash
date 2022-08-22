@@ -77,7 +77,7 @@ impl Shader {
 #[derive(Clone, Debug)]
 pub struct SpecializedShader {
     pub shader: Arc<Shader>,
-    pub specialization: Option<SpecializationInfo>,
+    pub specialization: SpecializationInfo,
 }
 impl PartialEq for SpecializedShader {
     fn eq(&self, other: &Self) -> bool {
