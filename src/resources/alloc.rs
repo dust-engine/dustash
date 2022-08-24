@@ -433,6 +433,9 @@ impl MemBuffer {
     pub fn device_local(&self) -> bool {
         self.memory_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
     }
+    pub fn host_visible(&self) -> bool {
+        self.memory_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+    }
 
     pub fn make_device_local(self: Arc<Self>, commands_future: &mut crate::sync::CommandsFuture) -> Arc<Self> {
         if self.device_local() {
@@ -475,6 +478,13 @@ impl MemBuffer {
             let slice = std::slice::from_raw_parts_mut(ptr, self.size as usize);
             f(slice);
             self.allocator.allocator.unmap_memory(&mut self.memory);
+        }
+    }
+
+    pub fn get_mut(&self) -> &mut [u8] {
+        assert!(!self.ptr.is_null());
+        unsafe {
+            std::slice::from_raw_parts_mut(self.ptr as *mut u8, self.size as usize)
         }
     }
 }
