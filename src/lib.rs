@@ -10,6 +10,8 @@
 #![feature(core_ffi_c)]
 #![feature(iterator_try_collect)]
 #![feature(array_zip)]
+#![feature(drain_filter)]
+#![feature(trait_upcasting)]
 
 use std::ops::Deref;
 
@@ -31,6 +33,7 @@ pub mod shader;
 pub mod sync;
 
 mod device;
+mod graph;
 mod instance;
 
 pub use blocking::Task;
