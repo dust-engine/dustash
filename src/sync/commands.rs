@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     command::{
         recorder::{CommandBufferBuilder, CommandExecutable, CommandRecorder},
-        sync2::PipelineBarrier,
+        sync::PipelineBarrier,
     },
     queue::{
         semaphore::{TimelineSemaphore, TimelineSemaphoreOp},
