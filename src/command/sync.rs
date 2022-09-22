@@ -286,7 +286,7 @@ pub enum ImageLayout {
 }
 
 
-struct VkAccessInfo2 {
+struct VkAccessInfo {
     stage_mask: vk::PipelineStageFlags2,
     access_mask: vk::AccessFlags2,
     image_layout: vk::ImageLayout,
@@ -301,173 +301,173 @@ impl AccessType {
         (*self as u32) > (Self::Present as u32)
     }
 
-    const fn to_vk(self) -> VkAccessInfo2 {
+    const fn to_vk(self) -> VkAccessInfo {
         match self {
-            AccessType::CommandBufferReadNV => VkAccessInfo2 {
+            AccessType::CommandBufferReadNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COMMAND_PREPROCESS_NV,
                 access_mask: vk::AccessFlags2::COMMAND_PREPROCESS_READ_NV,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::IndirectBuffer => VkAccessInfo2 {
+            AccessType::IndirectBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::DRAW_INDIRECT,
                 access_mask: vk::AccessFlags2::INDIRECT_COMMAND_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::IndexBuffer => VkAccessInfo2 {
+            AccessType::IndexBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::VERTEX_INPUT,
                 access_mask: vk::AccessFlags2::INDEX_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::VertexBuffer => VkAccessInfo2 {
+            AccessType::VertexBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::VERTEX_INPUT,
                 access_mask: vk::AccessFlags2::VERTEX_ATTRIBUTE_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::VertexShaderReadUniformBuffer => VkAccessInfo2 {
+            AccessType::VertexShaderReadUniformBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::VERTEX_SHADER,
                 access_mask: vk::AccessFlags2::UNIFORM_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer => VkAccessInfo2 {
+            AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::VERTEX_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             },
-            AccessType::VertexShaderReadOther => VkAccessInfo2 {
+            AccessType::VertexShaderReadOther => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::VERTEX_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TessellationControlShaderReadUniformBuffer => VkAccessInfo2 {
+            AccessType::TessellationControlShaderReadUniformBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TESSELLATION_CONTROL_SHADER,
                 access_mask: vk::AccessFlags2::UNIFORM_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
             AccessType::TessellationControlShaderReadSampledImageOrUniformTexelBuffer => {
-                VkAccessInfo2 {
+                VkAccessInfo {
                     stage_mask: vk::PipelineStageFlags2::TESSELLATION_CONTROL_SHADER,
                     access_mask: vk::AccessFlags2::SHADER_READ,
                     image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
                 }
             }
-            AccessType::TessellationControlShaderReadOther => VkAccessInfo2 {
+            AccessType::TessellationControlShaderReadOther => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TESSELLATION_CONTROL_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TessellationEvaluationShaderReadUniformBuffer => VkAccessInfo2 {
+            AccessType::TessellationEvaluationShaderReadUniformBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TESSELLATION_EVALUATION_SHADER,
                 access_mask: vk::AccessFlags2::UNIFORM_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
             AccessType::TessellationEvaluationShaderReadSampledImageOrUniformTexelBuffer => {
-                VkAccessInfo2 {
+                VkAccessInfo {
                     stage_mask: vk::PipelineStageFlags2::TESSELLATION_EVALUATION_SHADER,
                     access_mask: vk::AccessFlags2::SHADER_READ,
                     image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
                 }
             }
-            AccessType::TessellationEvaluationShaderReadOther => VkAccessInfo2 {
+            AccessType::TessellationEvaluationShaderReadOther => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TESSELLATION_EVALUATION_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::GeometryShaderReadUniformBuffer => VkAccessInfo2 {
+            AccessType::GeometryShaderReadUniformBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::GEOMETRY_SHADER,
                 access_mask: vk::AccessFlags2::UNIFORM_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::GeometryShaderReadSampledImageOrUniformTexelBuffer => VkAccessInfo2 {
+            AccessType::GeometryShaderReadSampledImageOrUniformTexelBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::GEOMETRY_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             },
-            AccessType::GeometryShaderReadOther => VkAccessInfo2 {
+            AccessType::GeometryShaderReadOther => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::GEOMETRY_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TaskShaderReadUniformBufferNV => VkAccessInfo2 {
+            AccessType::TaskShaderReadUniformBufferNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TASK_SHADER_NV,
                 access_mask: vk::AccessFlags2::UNIFORM_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::TaskShaderReadSampledImageOrUniformTexelBufferNV => VkAccessInfo2 {
+            AccessType::TaskShaderReadSampledImageOrUniformTexelBufferNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TASK_SHADER_NV,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             },
-            AccessType::TaskShaderReadOtherNV => VkAccessInfo2 {
+            AccessType::TaskShaderReadOtherNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TASK_SHADER_NV,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::MeshShaderReadUniformBufferNV => VkAccessInfo2 {
+            AccessType::MeshShaderReadUniformBufferNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::MESH_SHADER_NV,
                 access_mask: vk::AccessFlags2::UNIFORM_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::MeshShaderReadSampledImageOrUniformTexelBufferNV => VkAccessInfo2 {
+            AccessType::MeshShaderReadSampledImageOrUniformTexelBufferNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::MESH_SHADER_NV,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             },
-            AccessType::MeshShaderReadOtherNV => VkAccessInfo2 {
+            AccessType::MeshShaderReadOtherNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::MESH_SHADER_NV,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TransformFeedbackCounterReadEXT => VkAccessInfo2 {
+            AccessType::TransformFeedbackCounterReadEXT => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TRANSFORM_FEEDBACK_EXT,
                 access_mask: vk::AccessFlags2::TRANSFORM_FEEDBACK_COUNTER_READ_EXT,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::FragmentDensityMapReadEXT => VkAccessInfo2 {
+            AccessType::FragmentDensityMapReadEXT => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::FRAGMENT_DENSITY_PROCESS_EXT,
                 access_mask: vk::AccessFlags2::FRAGMENT_DENSITY_MAP_READ_EXT,
                 image_layout: vk::ImageLayout::FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
             },
-            AccessType::ShadingRateReadNV => VkAccessInfo2 {
+            AccessType::ShadingRateReadNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::SHADING_RATE_IMAGE_NV,
                 access_mask: vk::AccessFlags2::SHADING_RATE_IMAGE_READ_NV,
                 image_layout: vk::ImageLayout::SHADING_RATE_OPTIMAL_NV,
             },
-            AccessType::FragmentShaderReadUniformBuffer => VkAccessInfo2 {
+            AccessType::FragmentShaderReadUniformBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::FRAGMENT_SHADER,
                 access_mask: vk::AccessFlags2::UNIFORM_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::FragmentShaderReadSampledImageOrUniformTexelBuffer => VkAccessInfo2 {
+            AccessType::FragmentShaderReadSampledImageOrUniformTexelBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::FRAGMENT_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             },
-            AccessType::FragmentShaderReadColorInputAttachment => VkAccessInfo2 {
+            AccessType::FragmentShaderReadColorInputAttachment => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::FRAGMENT_SHADER,
                 access_mask: vk::AccessFlags2::INPUT_ATTACHMENT_READ,
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             },
-            AccessType::FragmentShaderReadDepthStencilInputAttachment => VkAccessInfo2 {
+            AccessType::FragmentShaderReadDepthStencilInputAttachment => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::FRAGMENT_SHADER,
                 access_mask: vk::AccessFlags2::INPUT_ATTACHMENT_READ,
                 image_layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
             },
-            AccessType::FragmentShaderReadOther => VkAccessInfo2 {
+            AccessType::FragmentShaderReadOther => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::FRAGMENT_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::ColorAttachmentRead => VkAccessInfo2 {
+            AccessType::ColorAttachmentRead => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
                 access_mask: vk::AccessFlags2::COLOR_ATTACHMENT_READ,
                 image_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             },
-            AccessType::ColorAttachmentAdvancedBlendingEXT => VkAccessInfo2 {
+            AccessType::ColorAttachmentAdvancedBlendingEXT => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
                 access_mask: vk::AccessFlags2::COLOR_ATTACHMENT_READ_NONCOHERENT_EXT,
                 image_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             },
-            AccessType::DepthStencilAttachmentRead => VkAccessInfo2 {
+            AccessType::DepthStencilAttachmentRead => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::from_raw(
                     vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS.as_raw()
                         | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS.as_raw(),
@@ -475,27 +475,27 @@ impl AccessType {
                 access_mask: vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ,
                 image_layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
             },
-            AccessType::ComputeShaderReadUniformBuffer => VkAccessInfo2 {
+            AccessType::ComputeShaderReadUniformBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COMPUTE_SHADER,
                 access_mask: vk::AccessFlags2::UNIFORM_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer => VkAccessInfo2 {
+            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COMPUTE_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             },
-            AccessType::ComputeShaderReadOther => VkAccessInfo2 {
+            AccessType::ComputeShaderReadOther => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COMPUTE_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::AnyShaderReadUniformBuffer => VkAccessInfo2 {
+            AccessType::AnyShaderReadUniformBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
                 access_mask: vk::AccessFlags2::UNIFORM_READ,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::AnyShaderReadUniformBufferOrVertexBuffer => VkAccessInfo2 {
+            AccessType::AnyShaderReadUniformBufferOrVertexBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
                 access_mask: vk::AccessFlags2::from_raw(
                     vk::AccessFlags2::UNIFORM_READ.as_raw()
@@ -503,117 +503,117 @@ impl AccessType {
                 ),
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer => VkAccessInfo2 {
+            AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             },
-            AccessType::AnyShaderReadOther => VkAccessInfo2 {
+            AccessType::AnyShaderReadOther => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
                 access_mask: vk::AccessFlags2::SHADER_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TransferRead => VkAccessInfo2 {
+            AccessType::TransferRead => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::ALL_TRANSFER,
                 access_mask: vk::AccessFlags2::TRANSFER_READ,
                 image_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             },
-            AccessType::CopyRead => VkAccessInfo2 {
+            AccessType::CopyRead => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COPY,
                 access_mask: vk::AccessFlags2::TRANSFER_READ,
                 image_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             },
-            AccessType::BlitRead => VkAccessInfo2 {
+            AccessType::BlitRead => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::BLIT,
                 access_mask: vk::AccessFlags2::TRANSFER_READ,
                 image_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             },
-            AccessType::ResolveRead => VkAccessInfo2 {
+            AccessType::ResolveRead => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::RESOLVE,
                 access_mask: vk::AccessFlags2::TRANSFER_READ,
                 image_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             },
-            AccessType::HostRead => VkAccessInfo2 {
+            AccessType::HostRead => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::HOST,
                 access_mask: vk::AccessFlags2::HOST_READ,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::Present => VkAccessInfo2 {
+            AccessType::Present => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::empty(),
                 access_mask: vk::AccessFlags2::empty(),
                 image_layout: vk::ImageLayout::PRESENT_SRC_KHR,
             },
-            AccessType::ConditionalRenderingReadEXT => VkAccessInfo2 {
+            AccessType::ConditionalRenderingReadEXT => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::CONDITIONAL_RENDERING_EXT,
                 access_mask: vk::AccessFlags2::CONDITIONAL_RENDERING_READ_EXT,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::RayTracingShaderAccelerationStructureReadKHR => VkAccessInfo2 {
+            AccessType::RayTracingShaderAccelerationStructureReadKHR => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR,
                 access_mask: vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::AccelerationStructureBuildReadKHR => VkAccessInfo2 {
+            AccessType::AccelerationStructureBuildReadKHR => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR,
                 access_mask: vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::CommandBufferWriteNV => VkAccessInfo2 {
+            AccessType::CommandBufferWriteNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COMMAND_PREPROCESS_NV,
                 access_mask: vk::AccessFlags2::COMMAND_PREPROCESS_WRITE_NV,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::VertexShaderWrite => VkAccessInfo2 {
+            AccessType::VertexShaderWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::VERTEX_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TessellationControlShaderWrite => VkAccessInfo2 {
+            AccessType::TessellationControlShaderWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TESSELLATION_CONTROL_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TessellationEvaluationShaderWrite => VkAccessInfo2 {
+            AccessType::TessellationEvaluationShaderWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TESSELLATION_EVALUATION_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::GeometryShaderWrite => VkAccessInfo2 {
+            AccessType::GeometryShaderWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::GEOMETRY_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TaskShaderWriteNV => VkAccessInfo2 {
+            AccessType::TaskShaderWriteNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TASK_SHADER_NV,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::MeshShaderWriteNV => VkAccessInfo2 {
+            AccessType::MeshShaderWriteNV => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::MESH_SHADER_NV,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TransformFeedbackWriteEXT => VkAccessInfo2 {
+            AccessType::TransformFeedbackWriteEXT => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TRANSFORM_FEEDBACK_EXT,
                 access_mask: vk::AccessFlags2::TRANSFORM_FEEDBACK_WRITE_EXT,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::TransformFeedbackCounterWriteEXT => VkAccessInfo2 {
+            AccessType::TransformFeedbackCounterWriteEXT => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::TRANSFORM_FEEDBACK_EXT,
                 access_mask: vk::AccessFlags2::TRANSFORM_FEEDBACK_COUNTER_WRITE_EXT,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::FragmentShaderWrite => VkAccessInfo2 {
+            AccessType::FragmentShaderWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::FRAGMENT_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::ColorAttachmentWrite => VkAccessInfo2 {
+            AccessType::ColorAttachmentWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
                 access_mask: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
                 image_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             },
-            AccessType::DepthStencilAttachmentWrite => VkAccessInfo2 {
+            AccessType::DepthStencilAttachmentWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::from_raw(
                     vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS.as_raw()
                         | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS.as_raw(),
@@ -621,7 +621,7 @@ impl AccessType {
                 access_mask: vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
                 image_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             },
-            AccessType::DepthAttachmentWriteStencilReadOnly => VkAccessInfo2 {
+            AccessType::DepthAttachmentWriteStencilReadOnly => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::from_raw(
                     vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS.as_raw()
                         | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS.as_raw(),
@@ -632,7 +632,7 @@ impl AccessType {
                 ),
                 image_layout: vk::ImageLayout::DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR,
             },
-            AccessType::StencilAttachmentWriteDepthReadOnly => VkAccessInfo2 {
+            AccessType::StencilAttachmentWriteDepthReadOnly => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::from_raw(
                     vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS.as_raw()
                         | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS.as_raw(),
@@ -643,62 +643,62 @@ impl AccessType {
                 ),
                 image_layout: vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR,
             },
-            AccessType::ComputeShaderWrite => VkAccessInfo2 {
+            AccessType::ComputeShaderWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COMPUTE_SHADER,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::RayTracingShaderWrite => VkAccessInfo2 {
+            AccessType::RayTracingShaderWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::AnyShaderWrite => VkAccessInfo2 {
+            AccessType::AnyShaderWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
                 access_mask: vk::AccessFlags2::SHADER_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::TransferWrite => VkAccessInfo2 {
+            AccessType::TransferWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::ALL_TRANSFER,
                 access_mask: vk::AccessFlags2::TRANSFER_WRITE,
                 image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             },
-            AccessType::CopyWrite => VkAccessInfo2 {
+            AccessType::CopyWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COPY,
                 access_mask: vk::AccessFlags2::TRANSFER_WRITE,
                 image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             },
-            AccessType::BlitWrite => VkAccessInfo2 {
+            AccessType::BlitWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::BLIT,
                 access_mask: vk::AccessFlags2::TRANSFER_WRITE,
                 image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             },
-            AccessType::ResolveWrite => VkAccessInfo2 {
+            AccessType::ResolveWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::RESOLVE,
                 access_mask: vk::AccessFlags2::TRANSFER_WRITE,
                 image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             },
-            AccessType::ClearWrite => VkAccessInfo2 {
+            AccessType::ClearWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::CLEAR,
                 access_mask: vk::AccessFlags2::TRANSFER_WRITE,
                 image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             },
-            AccessType::HostPreinitialized => VkAccessInfo2 {
+            AccessType::HostPreinitialized => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::HOST,
                 access_mask: vk::AccessFlags2::HOST_WRITE,
                 image_layout: vk::ImageLayout::PREINITIALIZED,
             },
-            AccessType::HostWrite => VkAccessInfo2 {
+            AccessType::HostWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::HOST,
                 access_mask: vk::AccessFlags2::HOST_WRITE,
                 image_layout: vk::ImageLayout::GENERAL,
             },
-            AccessType::AccelerationStructureBuildWriteKHR => VkAccessInfo2 {
+            AccessType::AccelerationStructureBuildWriteKHR => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR,
                 access_mask: vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR,
                 image_layout: vk::ImageLayout::UNDEFINED,
             },
-            AccessType::ColorAttachmentReadWrite => VkAccessInfo2 {
+            AccessType::ColorAttachmentReadWrite => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
                 access_mask: vk::AccessFlags2::from_raw(
                     vk::AccessFlags2::COLOR_ATTACHMENT_READ.as_raw()
@@ -706,7 +706,7 @@ impl AccessType {
                 ),
                 image_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             },
-            AccessType::General => VkAccessInfo2 {
+            AccessType::General => VkAccessInfo {
                 stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
                 access_mask: vk::AccessFlags2::from_raw(
                     vk::AccessFlags2::MEMORY_READ.as_raw()
@@ -993,7 +993,7 @@ impl PipelineBarrier {
 impl<'a> CommandRecorder<'a> {
     /// Insert a memory dependency.
     /// Pipeline Barrier parameters are generated at compile time.
-    pub fn simple_const_pipeline_barrier2<const BL: usize, const IL: usize>(
+    pub fn simple_const_pipeline_barrier<const BL: usize, const IL: usize>(
         &mut self,
         barrier: &PipelineBarrierConst<BL, IL>,
     ) -> &mut Self {
@@ -1006,7 +1006,7 @@ impl<'a> CommandRecorder<'a> {
     }
 
     /// Insert a memory dependency.
-    pub fn simple_pipeline_barrier2(&mut self, barrier: &PipelineBarrier) -> &mut Self {
+    pub fn simple_pipeline_barrier(&mut self, barrier: &PipelineBarrier) -> &mut Self {
         let dep_info = barrier.to_dependency_info();
         unsafe {
             self.device
