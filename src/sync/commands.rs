@@ -185,7 +185,7 @@ impl<'q, 'a> CommandsStageFuture<'a> {
             return self.commands_future;
         }
         self.commands_future.then_commands(|mut recorder| {
-            recorder.simple_pipeline_barrier2(barrier);
+            recorder.pipeline_barrier2(&barrier.to_dependency_info());
         });
         let mut future = CommandsFuture::new(self.commands_future.queues.clone(), new_queue); // The future on the new queue
         self.then(future.stage(stage));
@@ -194,7 +194,7 @@ impl<'q, 'a> CommandsStageFuture<'a> {
         drop(future);
 
         self.commands_future.then_commands(|mut recorder| {
-            recorder.simple_pipeline_barrier2(barrier);
+            recorder.pipeline_barrier2(&barrier.to_dependency_info());
         });
         self.commands_future
     }

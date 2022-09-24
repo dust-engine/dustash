@@ -972,7 +972,7 @@ impl PipelineBarrier {
             image_barriers,
         }
     }
-    fn to_dependency_info(&self) -> vk::DependencyInfo {
+    pub fn to_dependency_info(&self) -> vk::DependencyInfo {
         vk::DependencyInfo {
             dependency_flags: self.dependency_flag,
             memory_barrier_count: if self.memory_barrier.is_some() { 1 } else { 0 },

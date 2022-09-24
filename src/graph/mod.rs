@@ -1,16 +1,14 @@
-use std::any::Any;
 use std::collections::BinaryHeap;
 use std::rc::Weak;
 use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 use ash::vk;
 
-use crate::command::recorder::CommandRecorder;
-use crate::command::sync::{AccessType, ImageBarrier, PipelineBarrier, MemoryBarrier};
+use crate::resources::{HasBuffer, HasImage};
 
 use self::pipline_stage_order::access_is_write;
 pub struct RenderGraph {
     heads: BinaryHeap<BinaryHeapKeyedEntry<Rc<RefCell<RenderGraphNode>>>>,
-    resources: Vec<Box<dyn Send + Sync>>,
+    resources: Vec<Resource>,
 }
 #[derive(Clone)]
 struct BinaryHeapKeyedEntry<T>(isize, T);
@@ -72,7 +70,19 @@ impl RenderGraph {
 
     pub fn import<T: Send + Sync + 'static>(&mut self, resource: T) -> ResourceHandle<T> {
         let idx = self.resources.len();
-        self.resources.push(Box::new(resource));
+        self.resources.push(Resource::Other(Box::new(resource)));
+        ResourceHandle { idx, _marker: PhantomData }
+    }
+
+    pub fn import_image<T: HasImage + Send + Sync + 'static>(&mut self, resource: T) -> ResourceHandle<T> {
+        let idx = self.resources.len();
+        self.resources.push(Resource::Other(Box::new(resource)));
+        ResourceHandle { idx, _marker: PhantomData }
+    }
+
+    pub fn import_buffer<T: HasBuffer + Send + Sync + 'static>(&mut self, resource: T) -> ResourceHandle<T> {
+        let idx = self.resources.len();
+        self.resources.push(Resource::Other(Box::new(resource)));
         ResourceHandle { idx, _marker: PhantomData }
     }
 
@@ -80,7 +90,11 @@ impl RenderGraph {
         let mut resources = self.resources.into_iter().map(|res| ResourceState {
             resource: res,
             dirty_stages: vk::PipelineStageFlags2::empty(),
-            available_stages: vk::PipelineStageFlags2::empty()
+            accesses: vk::AccessFlags2::empty(),
+            prev_write: false,
+            available_stages: vk::PipelineStageFlags2::empty(),
+            available_accesses: vk::AccessFlags2::empty(),
+            layout: vk::ImageLayout::UNDEFINED
         }).collect::<Vec<_>>();
         // TODO: finer grained optimizations when we have more complicated render graphs to test.
         while let Some(head) = self.heads.pop() {
@@ -91,70 +105,94 @@ impl RenderGraph {
             if let Some(record) = head.config.record {
                 let mut ctx = RenderGraphContext::new();
 
-                // For all reads and writes, if the image was dirty, flush and make not dirty.
-                let mut dst_access: Vec<AccessType> = Vec::with_capacity(head.config.accesses.len());
-
                 let mut global_barries: Vec<vk::MemoryBarrier2> = Vec::new();
                 let mut image_barriers: Vec<vk::ImageMemoryBarrier2> = Vec::new();
                 let mut buffer_barries: Vec<vk::BufferMemoryBarrier2> = Vec::new();
 
                 for access in head.config.accesses.iter() {
                     let res = &mut resources[access.idx];
-                    if !res.available_stages.contains(access.stage) {
-                        // Needs to emit pipeline barrier.
+                    
+                    let is_write = access_is_write(access.access);
+
+                    let mut add_barrier = |src_access_mask: vk::AccessFlags2, dst_access_mask: vk::AccessFlags2| {
                         match access.barrier {
-                            Barrier::Image { src_layout, dst_layout, subresource_range } => image_barriers.push(vk::ImageMemoryBarrier2 {
-                                src_stage_mask: res.dirty_stages,
-                                src_access_mask: res.accesses,
-                                dst_stage_mask: access.stage,
-                                dst_access_mask: access.access,
-                                old_layout: src_layout,
-                                new_layout: dst_layout,
-                                subresource_range,
-                                image: todo!(), // Coerse res into image
-                                ..Default::default()
-                            }),
+                            Barrier::Image { src_layout, dst_layout, subresource_range } => {
+                                image_barriers.push(vk::ImageMemoryBarrier2 {
+                                    src_stage_mask: res.dirty_stages,
+                                    src_access_mask,
+                                    dst_stage_mask: access.stage,
+                                    dst_access_mask,
+                                    old_layout: res.layout,
+                                    new_layout: src_layout,
+                                    subresource_range,
+                                    image: match &res.resource {
+                                        Resource::Image(image) => image.raw_image(),
+                                        _ => panic!()
+                                    },
+                                    ..Default::default()
+                                });
+                                res.layout = dst_layout;
+                            },
                             Barrier::Global => global_barries.push(vk::MemoryBarrier2 {
                                 src_stage_mask: res.dirty_stages,
-                                src_access_mask: res.accesses,
+                                src_access_mask,
                                 dst_stage_mask: access.stage,
-                                dst_access_mask: access.access,
+                                dst_access_mask,
                                 ..Default::default()
                             }),
-                            Barrier::Buffer { subresource_range, offset, size } => buffer_barries.push(vk::BufferMemoryBarrier2 {
+                            Barrier::Buffer {offset, size } => buffer_barries.push(vk::BufferMemoryBarrier2 {
                                 src_stage_mask: res.dirty_stages,
-                                src_access_mask: res.accesses,
+                                src_access_mask,
                                 dst_stage_mask: access.stage,
-                                dst_access_mask: access.access,
+                                dst_access_mask,
                                 offset,
                                 size,
-                                buffer: todo!(),
+                                buffer: match &res.resource {
+                                    Resource::Buffer(image) => image.raw_buffer(),
+                                    _ => panic!()
+                                },
                                 ..Default::default()
                             }),
                         }
-                        res.available_stages |= pipline_stage_order::logically_later_stages(access.stage); // and all subsequent stages
-                        // RoR: the previous node should have the corresponding flags set in available_stages which prevents unnecessary pipeline barriers.
-                        // WoW: After the first write, available stages is 0. Therefore, the pipeline barrier will be emitted.
-                        // WoR: same as above.
-                        // RoW. Only execution barrier required. Needs more consideration hre tomorrow.
-                        // Also need to consider the case where you have multiple reads and writes in the same stage.
-                    }
-
-                    let is_write = access_is_write(access.access);
-                    if is_write {
-                        res.available_stages = vk::PipelineStageFlags2::empty();
-                        if !res.prev_write {
-                            res.accesses = vk::AccessFlags2::empty();
-                            res.dirty_stages = vk::PipelineStageFlags2::empty();
-                        }
-                        res.accesses |= access.access;
-                        res.dirty_stages |= access.stage;
+                    };
+                    match (res.prev_write, is_write) {
+                        (true, true) => {
+                            // Write after write.
+                            // needs execution and memory barrier.
+                            add_barrier(res.accesses, access.access);
+                            res.dirty_stages = access.stage;
+                            res.accesses = access.access;
+                            res.available_stages = vk::PipelineStageFlags2::empty();
+                            res.available_accesses = vk::AccessFlags2::empty();
+                        },
+                        (true, false) => {
+                            // Read after write.
+                            add_barrier(res.accesses, access.access);
+                            res.available_stages = pipline_stage_order::logically_later_stages(access.stage);
+                            res.available_accesses = access.access;
+                        },
+                        (false, true) => {
+                            // Write after read
+                            // Execution barrier only.
+                            add_barrier(vk::AccessFlags2::empty(), vk::AccessFlags2::empty());
+                            res.dirty_stages = access.stage;
+                            res.accesses = access.access;
+                            res.available_stages = vk::PipelineStageFlags2::empty();
+                            res.available_accesses = vk::AccessFlags2::empty();
+                        },
+                        (false, false) => {
+                            // Read after read. Only emit barrier when it's not already covered.
+                            if !res.available_stages.contains(access.stage) || !res.available_accesses.contains(access.access) {
+                                // Re-emit barrier.
+                                add_barrier(res.accesses, access.access);
+                                res.available_stages |= pipline_stage_order::logically_later_stages(access.stage);
+                                res.available_accesses |= access.access;
+                            }
+                        },
                     }
                     res.prev_write = is_write;
                 }
-                CommandRecorder::simple_pipeline_barrier(todo!(), &PipelineBarrier::new(
-                    memory_barrier, &[], &[], vk::DependencyFlags::empty()));
-
+                // TODO: insert the pipeline barrier here.
                 // Execute the command.
                 (record)(&mut ctx);
             }
@@ -165,8 +203,14 @@ impl RenderGraph {
     }
 }
 
+pub enum Resource {
+    Buffer(Box<dyn HasBuffer + Send + Sync>),
+    Image(Box<dyn HasImage + Send + Sync>),
+    Other(Box<dyn Send + Sync>),
+}
+
 pub struct ResourceState {
-    resource: Box<dyn Send + Sync>,
+    resource: Resource,
 
     // If a stage writes to the resource, the corresponding bits will be set to True.
     dirty_stages: vk::PipelineStageFlags2,
@@ -175,8 +219,11 @@ pub struct ResourceState {
     
     // After a pipeline barrier, all dstStages gets set to true, indicating that the change is now visible to these stages.
     available_stages: vk::PipelineStageFlags2,
+    available_accesses: vk::AccessFlags2,
 
     prev_write: bool,
+
+    layout: vk::ImageLayout,
 }
 
 impl Then {
@@ -229,38 +276,61 @@ pub struct NodeConfig {
     accesses: Vec<Access>,
 }
 impl NodeConfig {
-    pub fn record(&mut self, record: impl FnOnce(&mut RenderGraphContext) + 'static) {
-        self.record = Some(Box::new(record))
+    pub fn record(&mut self, record: impl FnOnce(&mut RenderGraphContext) + 'static) -> &mut Self {
+        self.record = Some(Box::new(record));
+        self
     }
     /// An image memory barrier
-    pub fn image_access(
+    pub fn image_access<T: HasImage>(
         &mut self,
-        image: (),
-        access: AccessType,
+        image: ResourceHandle<T>,
+        stage: vk::PipelineStageFlags2,
+        access: vk::AccessFlags2,
         src_layout: vk::ImageLayout,    // The image would be guaranteed to be in this layout before the node executes
         dst_layout: vk::ImageLayout,    // The image will be transitioned to this layout by this node
         subresource_range: vk::ImageSubresourceRange
-    ) {
+    ) -> &mut Self {
+        self.accesses.push(Access {
+            idx: image.idx,
+            stage,
+            access,
+            barrier: Barrier::Image { src_layout, dst_layout, subresource_range },
+        });
+        self
     }
     /// A global memory barrier
-    pub fn access(
+    pub fn access<T>(
         &mut self,
-        resource: (),
-        access: AccessType,
-    ) {
-
+        resource: ResourceHandle<T>,
+        stage: vk::PipelineStageFlags2,
+        access: vk::AccessFlags2,
+    ) -> &mut Self {
+        self.accesses.push(Access {
+            idx: resource.idx,
+            stage,
+            access,
+            barrier: Barrier::Global,
+        });
+        self
     }
 
     /// Note that BufferMemoryBarriers don't actually do anything useful beyond global memory barrier.
     /// That's why we always emit global memory barrier for buffer resources, and don't ask for buffer offset and size.
-    pub fn buffer_access(
+    pub fn buffer_access<T: HasBuffer>(
         &mut self,
-        resource: (),
-        access: AccessType,
+        resource: ResourceHandle<T>,
+        stage: vk::PipelineStageFlags2,
+        access: vk::AccessFlags2,
         offset: vk::DeviceSize,
         size: vk::DeviceSize,
-    ) {
-
+    ) -> &mut Self {
+        self.accesses.push(Access {
+            idx: resource.idx,
+            stage,
+            access,
+            barrier: Barrier::Buffer { offset, size },
+        });
+        self
     }
 }
 impl NodeConfig {
@@ -292,7 +362,6 @@ enum Barrier {
     },
     Global,
     Buffer {
-        subresource_range: vk::ImageSubresourceRange,
         offset: vk::DeviceSize,
         size: vk::DeviceSize,
     }
@@ -351,16 +420,16 @@ mod pipline_stage_order {
     use ash::vk;
     use vk::PipelineStageFlags2 as F;
 
-    const FRAGMENT_BITS: vk::PipelineStageFlags2 = F::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR | F::EARLY_FRAGMENT_TESTS | F::FRAGMENT_SHADER | F::LATE_FRAGMENT_TESTS | F::COLOR_ATTACHMENT_OUTPUT;
-    const GRAPHICS_BITS: vk::PipelineStageFlags2 = F::DRAW_INDIRECT | F::INDEX_INPUT | F::VERTEX_ATTRIBUTE_INPUT |
-    F::VERTEX_SHADER | F::TESSELLATION_CONTROL_SHADER | F::TESSELLATION_EVALUATION_SHADER | F::GEOMETRY_SHADER |
-    F::TRANSFORM_FEEDBACK_EXT | FRAGMENT_BITS;
+    const FRAGMENT_BITS: vk::PipelineStageFlags2 = F::from_raw(F::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR.as_raw() | F::EARLY_FRAGMENT_TESTS.as_raw() | F::FRAGMENT_SHADER.as_raw() | F::LATE_FRAGMENT_TESTS.as_raw() | F::COLOR_ATTACHMENT_OUTPUT.as_raw());
+    const GRAPHICS_BITS: vk::PipelineStageFlags2 = F::from_raw(F::DRAW_INDIRECT.as_raw() | F::INDEX_INPUT.as_raw() | F::VERTEX_ATTRIBUTE_INPUT.as_raw() |
+    F::VERTEX_SHADER.as_raw() | F::TESSELLATION_CONTROL_SHADER.as_raw() | F::TESSELLATION_EVALUATION_SHADER.as_raw() | F::GEOMETRY_SHADER.as_raw() |
+    F::TRANSFORM_FEEDBACK_EXT.as_raw() | FRAGMENT_BITS.as_raw());
 
-    const GRAPHICS_MESH_BITS: vk::PipelineStageFlags2 = F::DRAW_INDIRECT | F::TASK_SHADER_NV | F::MESH_SHADER_NV | FRAGMENT_BITS;
+    const GRAPHICS_MESH_BITS: vk::PipelineStageFlags2 = F::from_raw(F::DRAW_INDIRECT.as_raw() | F::TASK_SHADER_NV.as_raw() | F::MESH_SHADER_NV.as_raw() | FRAGMENT_BITS.as_raw());
 
-    const COMPUTE_BITS: vk::PipelineStageFlags2 = F::DRAW_INDIRECT | F::COMPUTE_SHADER;
+    const COMPUTE_BITS: vk::PipelineStageFlags2 = F::from_raw(F::DRAW_INDIRECT.as_raw() | F::COMPUTE_SHADER.as_raw());
 
-    const RTX_BITS: vk::PipelineStageFlags2 = F::DRAW_INDIRECT | F::RAY_TRACING_SHADER_KHR;
+    const RTX_BITS: vk::PipelineStageFlags2 = F::from_raw(F::DRAW_INDIRECT.as_raw() | F::RAY_TRACING_SHADER_KHR.as_raw());
     /// https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-stages-order
     pub(super) fn logically_later_stages(stage: vk::PipelineStageFlags2) -> vk::PipelineStageFlags2 {
         match stage {
@@ -392,10 +461,7 @@ mod pipline_stage_order {
 
     pub(super) fn access_is_write(access: vk::AccessFlags2) -> bool {
         use vk::AccessFlags2 as F;
-        match access {
-            F::SHADER_WRITE | F::COLOR_ATTACHMENT_WRITE | F::DEPTH_STENCIL_ATTACHMENT_WRITE |
-            F::TRANSFER_WRITE | F::HOST_WRITE | F::MEMORY_WRITE | F::SHADER_STORAGE_WRITE => true,
-            _ => false,
-        }
+        access.intersects(F::SHADER_WRITE | F::COLOR_ATTACHMENT_WRITE | F::DEPTH_STENCIL_ATTACHMENT_WRITE |
+            F::TRANSFER_WRITE | F::HOST_WRITE | F::MEMORY_WRITE | F::SHADER_STORAGE_WRITE)
     }
 }
