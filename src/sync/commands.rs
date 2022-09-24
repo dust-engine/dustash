@@ -184,7 +184,7 @@ impl<'q, 'a> CommandsStageFuture<'a> {
         if old_index == new_index {
             return self.commands_future;
         }
-        self.commands_future.then_commands(|mut recorder| {
+        self.commands_future.then_commands(|mut recorder| unsafe {
             recorder.pipeline_barrier2(&barrier.to_dependency_info());
         });
         let mut future = CommandsFuture::new(self.commands_future.queues.clone(), new_queue); // The future on the new queue
@@ -193,7 +193,7 @@ impl<'q, 'a> CommandsStageFuture<'a> {
         // future is now the old future.
         drop(future);
 
-        self.commands_future.then_commands(|mut recorder| {
+        self.commands_future.then_commands(|mut recorder| unsafe {
             recorder.pipeline_barrier2(&barrier.to_dependency_info());
         });
         self.commands_future

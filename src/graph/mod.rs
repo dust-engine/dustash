@@ -3,6 +3,7 @@ use std::rc::Weak;
 use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 use ash::vk;
 
+use crate::command::recorder::CommandRecorder;
 use crate::resources::{HasBuffer, HasImage};
 
 use self::pipline_stage_order::access_is_write;
@@ -87,6 +88,7 @@ impl RenderGraph {
     }
 
     pub fn run(mut self) {
+        let mut ctx = RenderGraphContext::new();
         let mut resources = self.resources.into_iter().map(|res| ResourceState {
             resource: res,
             dirty_stages: vk::PipelineStageFlags2::empty(),
@@ -96,14 +98,12 @@ impl RenderGraph {
             available_accesses: vk::AccessFlags2::empty(),
             layout: vk::ImageLayout::UNDEFINED
         }).collect::<Vec<_>>();
-        // TODO: finer grained optimizations when we have more complicated render graphs to test.
         while let Some(head) = self.heads.pop() {
             let mut head = match Rc::try_unwrap(head.1) {
                 Ok(head) => head.into_inner(),
                 Err(_) => panic!("Requries exclusive ownership"),
             };
             if let Some(record) = head.config.record {
-                let mut ctx = RenderGraphContext::new();
 
                 let mut global_barries: Vec<vk::MemoryBarrier2> = Vec::new();
                 let mut image_barriers: Vec<vk::ImageMemoryBarrier2> = Vec::new();
@@ -193,6 +193,20 @@ impl RenderGraph {
                     res.prev_write = is_write;
                 }
                 // TODO: insert the pipeline barrier here.
+                unsafe {
+                    ctx.command_recorder.pipeline_barrier2(
+                        &vk::DependencyInfo {
+                            dependency_flags: vk::DependencyFlags::BY_REGION,
+                            memory_barrier_count: global_barries.len() as u32,
+                            p_memory_barriers: global_barries.as_ptr(),
+                            buffer_memory_barrier_count: buffer_barries.len() as u32,
+                            p_buffer_memory_barriers: buffer_barries.as_ptr(),
+                            image_memory_barrier_count: image_barriers.len() as u32,
+                            p_image_memory_barriers: image_barriers.as_ptr(),
+                            ..Default::default()
+                        }
+                    );
+                }
                 // Execute the command.
                 (record)(&mut ctx);
             }
@@ -261,8 +275,8 @@ impl Then {
 }
 
 
-pub struct RenderGraphContext {
-
+pub struct RenderGraphContext<'a> {
+    command_recorder: CommandRecorder<'a>
 }
 pub struct NodeConfig {
     /// The priority of the task.
@@ -342,9 +356,11 @@ impl NodeConfig {
         }
     }
 }
-impl RenderGraphContext {
+impl<'a> RenderGraphContext<'a> {
     fn new() -> Self {
-        Self {}
+        Self {
+            command_recorder: todo!()
+        }
     }
 }
 

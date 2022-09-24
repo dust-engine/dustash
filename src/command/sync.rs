@@ -882,72 +882,6 @@ impl<'a> ImageBarrier<'a> {
     }
 }
 
-pub struct PipelineBarrierConst<const BL: usize, const IL: usize> {
-    dependency_flag: vk::DependencyFlags,
-    memory_barrier: Option<vk::MemoryBarrier2>,
-    buffer_barriers: [vk::BufferMemoryBarrier2; BL],
-    image_barriers: [vk::ImageMemoryBarrier2; IL],
-}
-
-impl<const BL: usize, const IL: usize> PipelineBarrierConst<BL, IL> {
-    pub const fn new(
-        memory_barrier: Option<MemoryBarrier>,
-        buffer_barriers: &[BufferBarrier; BL],
-        image_barriers: &[ImageBarrier; IL],
-        dependency_flag: vk::DependencyFlags,
-    ) -> Self {
-        let memory_barrier = memory_barrier.as_ref().map(MemoryBarrier::to_vk);
-        let buffer_barriers = unsafe {
-            let mut v: [vk::BufferMemoryBarrier2; BL] = [MaybeUninit::uninit().assume_init(); BL];
-            let mut i = 0;
-            while i < buffer_barriers.len() {
-                let buffer_barrier = &buffer_barriers[i];
-                v[i] = buffer_barrier.to_vk();
-                i += 1;
-            }
-            v
-        };
-        let image_barriers = unsafe {
-            let mut v = [MaybeUninit::uninit().assume_init(); IL];
-            let mut i = 0;
-            while i < image_barriers.len() {
-                let image_barrier = &image_barriers[i];
-                v[i] = image_barrier.to_vk();
-                i += 1;
-            }
-            v
-        };
-        Self {
-            dependency_flag,
-            memory_barrier,
-            buffer_barriers,
-            image_barriers,
-        }
-    }
-
-    const fn to_dependency_info(&self) -> vk::DependencyInfo {
-        #[inline]
-        const fn ref_to_ptr<T>(a: &T) -> *const T {
-            a
-        }
-        vk::DependencyInfo {
-            s_type: vk::StructureType::DEPENDENCY_INFO,
-            p_next: null(),
-            dependency_flags: self.dependency_flag,
-            memory_barrier_count: if self.memory_barrier.is_some() { 1 } else { 0 },
-            p_memory_barriers: self
-                .memory_barrier
-                .as_ref()
-                .map(ref_to_ptr)
-                .unwrap_or(null()),
-            buffer_memory_barrier_count: self.buffer_barriers.len() as u32,
-            p_buffer_memory_barriers: self.buffer_barriers.as_ptr(),
-            image_memory_barrier_count: self.image_barriers.len() as u32,
-            p_image_memory_barriers: self.image_barriers.as_ptr(),
-        }
-    }
-}
-
 pub struct PipelineBarrier {
     dependency_flag: vk::DependencyFlags,
     memory_barrier: Option<vk::MemoryBarrier2>,
@@ -991,20 +925,6 @@ impl PipelineBarrier {
 }
 
 impl<'a> CommandRecorder<'a> {
-    /// Insert a memory dependency.
-    /// Pipeline Barrier parameters are generated at compile time.
-    pub fn simple_const_pipeline_barrier<const BL: usize, const IL: usize>(
-        &mut self,
-        barrier: &PipelineBarrierConst<BL, IL>,
-    ) -> &mut Self {
-        let dep_info = barrier.to_dependency_info();
-        unsafe {
-            self.device
-                .cmd_pipeline_barrier2(self.command_buffer, &dep_info)
-        }
-        self
-    }
-
     /// Insert a memory dependency.
     pub fn simple_pipeline_barrier(&mut self, barrier: &PipelineBarrier) -> &mut Self {
         let dep_info = barrier.to_dependency_info();

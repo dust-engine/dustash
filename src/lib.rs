@@ -1,4 +1,3 @@
-#![feature(into_future)]
 #![feature(type_alias_impl_trait)]
 #![feature(negative_impls)]
 #![feature(array_methods)]
@@ -7,7 +6,6 @@
 #![feature(const_option_ext)]
 #![feature(alloc_layout_extra)]
 #![feature(int_roundings)]
-#![feature(core_ffi_c)]
 #![feature(iterator_try_collect)]
 #![feature(array_zip)]
 #![feature(drain_filter)]
@@ -33,7 +31,7 @@ pub mod shader;
 pub mod sync;
 
 mod device;
-mod graph;
+pub mod graph;
 mod instance;
 
 pub use blocking::Task;

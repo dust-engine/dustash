@@ -194,7 +194,7 @@ impl<'a> CommandRecorder<'a> {
         self
     }
 
-    pub fn pipeline_barrier(
+    pub unsafe fn pipeline_barrier(
         &mut self,
         src_stage_mask: vk::PipelineStageFlags,
         dst_stage_mask: vk::PipelineStageFlags,
@@ -203,24 +203,20 @@ impl<'a> CommandRecorder<'a> {
         buffer_memory_barriers: &[vk::BufferMemoryBarrier],
         image_memory_barriers: &[vk::ImageMemoryBarrier],
     ) -> &mut Self {
-        unsafe {
-            self.device.cmd_pipeline_barrier(
-                self.command_buffer,
-                src_stage_mask,
-                dst_stage_mask,
-                dependency_flags,
-                memory_barriers,
-                buffer_memory_barriers,
-                image_memory_barriers,
-            )
-        }
+        self.device.cmd_pipeline_barrier(
+            self.command_buffer,
+            src_stage_mask,
+            dst_stage_mask,
+            dependency_flags,
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
+        );
         self
     }
-    pub fn pipeline_barrier2(&mut self, dependency_info: &vk::DependencyInfo) -> &mut Self {
-        unsafe {
-            self.device
-                .cmd_pipeline_barrier2(self.command_buffer, dependency_info)
-        }
+    pub unsafe fn pipeline_barrier2(&mut self, dependency_info: &vk::DependencyInfo) -> &mut Self {
+        self.device
+            .cmd_pipeline_barrier2(self.command_buffer, dependency_info);
         self
     }
     pub fn bind_raytracing_pipeline(
