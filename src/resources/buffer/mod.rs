@@ -26,8 +26,11 @@ impl Drop for Buffer {
     }
 }
 
-pub trait HasBuffer {
+pub trait HasBuffer: Send + Sync + 'static {
     fn raw_buffer(&self) -> vk::Buffer;
+    fn boxed_type_erased(self: Box<Self>) -> Box<dyn Send + Sync> {
+        Box::new(self)
+    }
 }
 
 impl HasBuffer for vk::Buffer {

@@ -4,8 +4,11 @@ use std::sync::Arc;
 use super::alloc::{Allocation, AllocationCreateFlags, Allocator, MemoryAllocScenario};
 use crate::{DebugObject, Device, HasDevice};
 
-pub trait HasImage {
+pub trait HasImage: Send + Sync + 'static {
     fn raw_image(&self) -> vk::Image;
+    fn boxed_type_erased(self: Box<Self>) -> Box<dyn Send + Sync> {
+        Box::new(self)
+    }
 }
 
 impl HasImage for vk::Image {

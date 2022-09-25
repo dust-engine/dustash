@@ -192,7 +192,6 @@ impl RenderGraph {
                     }
                     res.prev_write = is_write;
                 }
-                // TODO: insert the pipeline barrier here.
                 unsafe {
                     ctx.command_recorder.pipeline_barrier2(
                         &vk::DependencyInfo {
@@ -214,13 +213,18 @@ impl RenderGraph {
             let new_heads = head.nexts.drain_filter(|next| Rc::strong_count(&mut next.1) == 1);
             self.heads.extend(new_heads);
         }
+        ctx.command_recorder.referenced_resources.extend(resources.into_iter().map(|a| match a.resource {
+            Resource::Other(res) => res,
+            Resource::Buffer(buffer) => buffer.boxed_type_erased(),
+            Resource::Image(image) => image.boxed_type_erased(),
+        }));
     }
 }
 
 pub enum Resource {
-    Buffer(Box<dyn HasBuffer + Send + Sync>),
-    Image(Box<dyn HasImage + Send + Sync>),
-    Other(Box<dyn Send + Sync>),
+    Buffer(Box<dyn HasBuffer + Send + Sync + 'static>),
+    Image(Box<dyn HasImage + Send + Sync + 'static>),
+    Other(Box<dyn Send + Sync + 'static>),
 }
 
 pub struct ResourceState {
