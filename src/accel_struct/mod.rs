@@ -1,9 +1,10 @@
 use std::{mem::ManuallyDrop, ops::Deref, sync::Arc};
 
 use crate::{
+    command::recorder::CommandBufferResource,
     resources::alloc::{Allocator, BufferRequest, MemBuffer, MemoryAllocScenario},
     sync::CommandsFuture,
-    Device, HasDevice, command::recorder::CommandBufferResource,
+    Device, HasDevice,
 };
 use ash::extensions::khr;
 use ash::vk;

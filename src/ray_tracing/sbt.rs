@@ -1,9 +1,10 @@
 use std::{alloc::Layout, sync::Arc};
 
 use crate::{
+    graph::{RenderGraph, RenderGraphContext, ResourceHandle},
     resources::alloc::{Allocator, BufferRequest, MemBuffer},
     shader::SpecializedShader,
-    sync::CommandsFuture, graph::{RenderGraphContext, ResourceHandle, RenderGraph},
+    sync::CommandsFuture,
 };
 
 use super::pipeline::{RayTracingLoader, RayTracingPipeline};
@@ -172,7 +173,7 @@ pub struct Sbt {
     staging_handle: Option<ResourceHandle<MemBuffer>>,
 }
 
-impl std::fmt::Debug for Sbt  {
+impl std::fmt::Debug for Sbt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Sbt")
             .field("raygen_sbt", &self.raygen_sbt)
@@ -430,16 +431,26 @@ impl Sbt {
             },
             callable_sbt: vk::StridedDeviceAddressRegionKHR {
                 device_address: base_device_address
-                    + raygen_layout.extend(raymiss_layout).unwrap().0
-                    .pad_to_align().size() as u64,
+                    + raygen_layout
+                        .extend(raymiss_layout)
+                        .unwrap()
+                        .0
+                        .pad_to_align()
+                        .size() as u64,
                 stride: callable_layout_one.pad_to_align().size() as u64,
                 size: callable_layout_one.pad_to_align().size() as u64,
             },
             hit_sbt: vk::StridedDeviceAddressRegionKHR {
                 device_address: base_device_address
-                    + raygen_layout.extend(raymiss_layout).unwrap().0
-                    .extend(callable_layout).unwrap().0
-                    .pad_to_align().size() as u64,
+                    + raygen_layout
+                        .extend(raymiss_layout)
+                        .unwrap()
+                        .0
+                        .extend(callable_layout)
+                        .unwrap()
+                        .0
+                        .pad_to_align()
+                        .size() as u64,
                 stride: hitgroup_layout_one.pad_to_align().size() as u64,
                 size: hitgroup_layout.pad_to_align().size() as u64,
             },
@@ -450,15 +461,16 @@ impl Sbt {
         sbt
     }
 
-
     pub fn transfer(&self, ctx: &mut RenderGraphContext) {
         if let Some(staging) = self.staging_handle {
-            ctx.copy_buffer(staging, self.buf_handle, 
+            ctx.copy_buffer(
+                staging,
+                self.buf_handle,
                 vk::BufferCopy {
                     src_offset: 0,
                     dst_offset: 0,
                     size: self.total_size,
-                }
+                },
             )
         }
     }

@@ -72,7 +72,6 @@ impl CommandBufferResource for Box<dyn Send + Sync> {
     }
 }
 
-
 pub enum ReferencedResource {
     Boxed(Box<dyn Send + Sync>),
     Arc(Arc<dyn Send + Sync>),
@@ -142,7 +141,7 @@ impl<'a> CommandRecorder<'a> {
     pub(crate) fn track_resource(&mut self, res: ReferencedResource) {
         match res {
             ReferencedResource::Untracked => (),
-            _ => self.referenced_resources.push(res)
+            _ => self.referenced_resources.push(res),
         }
     }
     pub fn copy_buffer<
@@ -258,7 +257,8 @@ impl<'a> CommandRecorder<'a> {
                 pipeline.raw(),
             )
         }
-        self.referenced_resources.push(pipeline.command_buffer_resource());
+        self.referenced_resources
+            .push(pipeline.command_buffer_resource());
     }
     pub fn bind_descriptor_set(
         &mut self,

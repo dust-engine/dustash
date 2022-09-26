@@ -1,7 +1,10 @@
 use ash::{prelude::VkResult, vk};
 use std::{ffi::c_void, ops::Deref, sync::Arc};
 
-use crate::{sync::CommandsFuture, Device, HasDevice, MemoryHeap, MemoryType, command::recorder::CommandBufferResource};
+use crate::{
+    command::recorder::CommandBufferResource, sync::CommandsFuture, Device, HasDevice, MemoryHeap,
+    MemoryType,
+};
 
 use super::buffer::HasBuffer;
 
@@ -432,36 +435,48 @@ impl MemBuffer {
     }
 
     pub fn device_local(&self) -> bool {
-        self.memory_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+        self.memory_flags
+            .contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
     }
     pub fn host_visible(&self) -> bool {
-        self.memory_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+        self.memory_flags
+            .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
     }
 
-    pub fn make_device_local(self: Arc<Self>, commands_future: &mut crate::sync::CommandsFuture) -> Arc<Self> {
+    pub fn make_device_local(
+        self: Arc<Self>,
+        commands_future: &mut crate::sync::CommandsFuture,
+    ) -> Arc<Self> {
         if self.device_local() {
-            return self
+            return self;
         }
         let size = self.size();
 
-        let buffer = self.allocator.allocate_buffer(&BufferRequest {
-            size,
-            alignment: self.alignment(),
-            usage: ash::vk::BufferUsageFlags::STORAGE_BUFFER | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | ash::vk::BufferUsageFlags::TRANSFER_DST,
-            scenario: MemoryAllocScenario::DeviceAccess,
-            allocation_flags: AllocationCreateFlags::MAPPED,
-            ..Default::default()
-        }).unwrap();
+        let buffer = self
+            .allocator
+            .allocate_buffer(&BufferRequest {
+                size,
+                alignment: self.alignment(),
+                usage: ash::vk::BufferUsageFlags::STORAGE_BUFFER
+                    | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | ash::vk::BufferUsageFlags::TRANSFER_DST,
+                scenario: MemoryAllocScenario::DeviceAccess,
+                allocation_flags: AllocationCreateFlags::MAPPED,
+                ..Default::default()
+            })
+            .unwrap();
         let buffer = Arc::new(buffer);
 
         commands_future.then_commands(|mut recorder| {
-            recorder.copy_buffer(self, buffer.clone(), &[
-                ash::vk::BufferCopy {
+            recorder.copy_buffer(
+                self,
+                buffer.clone(),
+                &[ash::vk::BufferCopy {
                     src_offset: 0,
                     dst_offset: 0,
                     size,
-                }
-            ]);
+                }],
+            );
         });
         buffer
     }
@@ -484,8 +499,6 @@ impl MemBuffer {
 
     pub fn get_mut(&self) -> &mut [u8] {
         assert!(!self.ptr.is_null());
-        unsafe {
-            std::slice::from_raw_parts_mut(self.ptr as *mut u8, self.size as usize)
-        }
+        unsafe { std::slice::from_raw_parts_mut(self.ptr as *mut u8, self.size as usize) }
     }
 }

@@ -149,7 +149,9 @@ impl AccelerationStructureBuilder {
                     .cloned()
                     .map(|a| a.command_buffer_resource()),
             );
-            recorder.referenced_resources.push(scratch_buffer.command_buffer_resource());
+            recorder
+                .referenced_resources
+                .push(scratch_buffer.command_buffer_resource());
             acceleration_structures
         })
     }
@@ -203,7 +205,12 @@ impl AabbBlasBuilder {
         }
     }
     /// T: The type of the interleaved data.
-    pub fn add_geometry(&mut self, primitives: Arc<MemBuffer>, flags: vk::GeometryFlagsKHR, layout: Layout) {
+    pub fn add_geometry(
+        &mut self,
+        primitives: Arc<MemBuffer>,
+        flags: vk::GeometryFlagsKHR,
+        layout: Layout,
+    ) {
         // There might be two cases where vk::AabbPositionsKHR aren't layed out with a stride = 24
         // 1. The user wants to interleave some other metadata between vk::AabbPositionsKHR.
         //    Vulkan only guarantees that the intersection shader will be called for items within the AABB,

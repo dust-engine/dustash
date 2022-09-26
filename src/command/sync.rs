@@ -4,7 +4,6 @@ use ash::vk;
 
 use super::recorder::CommandRecorder;
 
-
 #[derive(Copy, Clone, Debug)]
 pub enum AccessType {
     /// Command buffer read operation as defined by NV_device_generated_commands.
@@ -190,7 +189,6 @@ pub enum AccessType {
     General,
 }
 
-
 /// Buffer barriers should only be used when a queue family ownership transfer
 /// is required - prefer global barriers at all other times.
 ///
@@ -214,7 +212,6 @@ pub struct BufferBarrier<'a> {
     pub offset: vk::DeviceSize,
     pub size: vk::DeviceSize,
 }
-
 
 /// Image barriers should only be used when a queue family ownership transfer
 /// or an image layout transition is required - prefer global barriers at all
@@ -269,7 +266,6 @@ impl<'a> Default for MemoryBarrier<'a> {
     }
 }
 
-
 /// ImageLayout defines a handful of layout options for images.
 /// Rather than a list of all possible image layouts, this reduced list is
 /// correlated with the access types to map to the correct Vulkan layouts.
@@ -285,7 +281,6 @@ pub enum ImageLayout {
     GeneralAndPresentation,
 }
 
-
 struct VkAccessInfo {
     stage_mask: vk::PipelineStageFlags2,
     access_mask: vk::AccessFlags2,
@@ -293,7 +288,7 @@ struct VkAccessInfo {
 }
 
 impl AccessType {
-        pub const fn is_read_only(&self) -> bool {
+    pub const fn is_read_only(&self) -> bool {
         let this = *self as u32;
         this <= (Self::Present as u32)
     }
