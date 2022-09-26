@@ -3,7 +3,7 @@ use std::rc::Weak;
 use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 use ash::vk;
 
-use crate::command::recorder::CommandRecorder;
+use crate::command::recorder::{CommandRecorder, CommandBufferResource};
 use crate::resources::{HasBuffer, HasImage};
 
 use self::pipline_stage_order::access_is_write;
@@ -214,9 +214,9 @@ impl RenderGraph {
             self.heads.extend(new_heads);
         }
         ctx.command_recorder.referenced_resources.extend(resources.into_iter().map(|a| match a.resource {
-            Resource::Other(res) => res,
-            Resource::Buffer(buffer) => buffer.boxed_type_erased(),
-            Resource::Image(image) => image.boxed_type_erased(),
+            Resource::Other(res) => res.command_buffer_resource(),
+            Resource::Buffer(buffer) => buffer.boxed_type_erased().command_buffer_resource(),
+            Resource::Image(image) => image.boxed_type_erased().command_buffer_resource(),
         }));
     }
 }

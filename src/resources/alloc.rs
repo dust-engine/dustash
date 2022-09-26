@@ -1,7 +1,7 @@
 use ash::{prelude::VkResult, vk};
 use std::{ffi::c_void, ops::Deref, sync::Arc};
 
-use crate::{sync::CommandsFuture, Device, HasDevice, MemoryHeap, MemoryType};
+use crate::{sync::CommandsFuture, Device, HasDevice, MemoryHeap, MemoryType, command::recorder::CommandBufferResource};
 
 use super::buffer::HasBuffer;
 
@@ -361,6 +361,7 @@ pub struct MemBuffer {
 }
 unsafe impl Send for MemBuffer {}
 unsafe impl Sync for MemBuffer {}
+impl CommandBufferResource for MemBuffer {}
 
 impl HasBuffer for MemBuffer {
     fn raw_buffer(&self) -> vk::Buffer {

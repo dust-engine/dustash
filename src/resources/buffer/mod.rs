@@ -1,7 +1,7 @@
 use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
 
-use crate::Device;
+use crate::{Device, command::recorder::CommandBufferResource};
 //pub mod vec_discrete;
 
 pub struct Buffer {

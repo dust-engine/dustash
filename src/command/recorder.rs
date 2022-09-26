@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
 use ash::{prelude::VkResult, vk};
 
@@ -9,7 +9,7 @@ use crate::HasDevice;
 
 pub struct CommandBufferBuilder {
     command_buffer: CommandBuffer,
-    resource_guards: Vec<Box<dyn Send + Sync>>,
+    resource_guards: Vec<ReferencedResource>,
 }
 
 // A command buffer in Executable state.
@@ -17,7 +17,7 @@ pub struct CommandBufferBuilder {
 // Submitting a CommandExecutable in Initial state due to pool reset is a no-op.
 pub struct CommandExecutable {
     pub(crate) command_buffer: CommandBuffer,
-    pub(crate) _resource_guards: Vec<Box<dyn Send + Sync>>,
+    pub(crate) _resource_guards: Vec<ReferencedResource>,
 }
 impl Debug for CommandExecutable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -47,13 +47,45 @@ impl CommandExecutable {
     }
 }
 
+pub trait CommandBufferResource: Sized + Send + Sync + 'static {
+    fn command_buffer_resource(self) -> ReferencedResource {
+        if std::mem::needs_drop::<Self>() {
+            ReferencedResource::Boxed(Box::new(self))
+        } else {
+            ReferencedResource::Untracked
+        }
+    }
+}
+impl<T: Send + Sync + 'static> CommandBufferResource for Arc<T> {
+    fn command_buffer_resource(self) -> ReferencedResource {
+        ReferencedResource::Arc(self)
+    }
+}
+impl<T: Send + Sync + 'static> CommandBufferResource for Box<T> {
+    fn command_buffer_resource(self) -> ReferencedResource {
+        ReferencedResource::Boxed(self)
+    }
+}
+impl CommandBufferResource for Box<dyn Send + Sync> {
+    fn command_buffer_resource(self) -> ReferencedResource {
+        ReferencedResource::Boxed(self)
+    }
+}
+
+
+pub enum ReferencedResource {
+    Boxed(Box<dyn Send + Sync>),
+    Arc(Arc<dyn Send + Sync>),
+    Untracked,
+}
+
 // vk::CommandBuffer in Recording state.
 // Note that during the entire lifetime of CommandRecorder, the command buffer remains in a locked state,
 // so it's impossible to reset the command buffer during this time to bring this back to Initial state.
 pub struct CommandRecorder<'a> {
     pub(crate) device: &'a ash::Device,
     pub(crate) command_buffer: vk::CommandBuffer,
-    pub(crate) referenced_resources: &'a mut Vec<Box<dyn Send + Sync>>,
+    pub(crate) referenced_resources: &'a mut Vec<ReferencedResource>,
 }
 
 impl CommandBuffer {
@@ -107,9 +139,15 @@ impl CommandBufferBuilder {
 }
 
 impl<'a> CommandRecorder<'a> {
+    pub(crate) fn track_resource(&mut self, res: ReferencedResource) {
+        match res {
+            ReferencedResource::Untracked => (),
+            _ => self.referenced_resources.push(res)
+        }
+    }
     pub fn copy_buffer<
-        SRC: HasBuffer + Send + Sync + 'static,
-        DST: HasBuffer + Send + Sync + 'static,
+        SRC: HasBuffer + CommandBufferResource,
+        DST: HasBuffer + CommandBufferResource,
     >(
         &mut self,
         src_buffer: SRC,
@@ -129,18 +167,14 @@ impl<'a> CommandRecorder<'a> {
                 regions,
             );
         }
-        if std::mem::needs_drop::<SRC>() {
-            self.referenced_resources.push(Box::new(src_buffer));
-        }
-        if std::mem::needs_drop::<DST>() {
-            self.referenced_resources.push(Box::new(dst_buffer));
-        }
+        self.track_resource(src_buffer.command_buffer_resource());
+        self.track_resource(dst_buffer.command_buffer_resource());
         self
     }
 
     pub fn copy_buffer_to_image<
-        SRC: HasBuffer + Send + Sync + 'static,
-        DST: HasImage + Send + Sync + 'static,
+        SRC: HasBuffer + CommandBufferResource,
+        DST: HasImage + CommandBufferResource,
     >(
         &mut self,
         src_buffer: SRC,
@@ -162,16 +196,12 @@ impl<'a> CommandRecorder<'a> {
                 regions,
             );
         }
-        if std::mem::needs_drop::<SRC>() {
-            self.referenced_resources.push(Box::new(src_buffer));
-        }
-        if std::mem::needs_drop::<DST>() {
-            self.referenced_resources.push(Box::new(dst_image));
-        }
+        self.track_resource(src_buffer.command_buffer_resource());
+        self.track_resource(dst_image.command_buffer_resource());
         self
     }
 
-    pub fn clear_color_image<T: HasImage + Send + Sync + 'static>(
+    pub fn clear_color_image<T: HasImage + CommandBufferResource>(
         &mut self,
         image: T,
         image_layout: vk::ImageLayout,
@@ -188,9 +218,7 @@ impl<'a> CommandRecorder<'a> {
             )
         }
 
-        if std::mem::needs_drop::<T>() {
-            self.referenced_resources.push(Box::new(image));
-        }
+        self.track_resource(image.command_buffer_resource());
         self
     }
 
@@ -221,7 +249,7 @@ impl<'a> CommandRecorder<'a> {
     }
     pub fn bind_raytracing_pipeline(
         &mut self,
-        pipeline: &crate::ray_tracing::pipeline::RayTracingPipeline,
+        pipeline: Arc<crate::ray_tracing::pipeline::RayTracingPipeline>,
     ) {
         unsafe {
             self.device.cmd_bind_pipeline(
@@ -230,6 +258,7 @@ impl<'a> CommandRecorder<'a> {
                 pipeline.raw(),
             )
         }
+        self.referenced_resources.push(pipeline.command_buffer_resource());
     }
     pub fn bind_descriptor_set(
         &mut self,

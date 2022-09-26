@@ -3,7 +3,7 @@ use std::{mem::ManuallyDrop, ops::Deref, sync::Arc};
 use crate::{
     resources::alloc::{Allocator, BufferRequest, MemBuffer, MemoryAllocScenario},
     sync::CommandsFuture,
-    Device, HasDevice,
+    Device, HasDevice, command::recorder::CommandBufferResource,
 };
 use ash::extensions::khr;
 use ash::vk;
@@ -240,7 +240,7 @@ impl AccelerationStructure {
         accel_struct.geometries_num_primitives = vec![instances.len() as u32];
         let accel_struct = Arc::new(accel_struct);
         build_geometry_info.dst_acceleration_structure = accel_struct.raw;
-        commands_future.then_commands(|recorder| unsafe {
+        commands_future.then_commands(|mut recorder| unsafe {
             loader.cmd_build_acceleration_structures(
                 recorder.command_buffer,
                 &[build_geometry_info],
@@ -251,13 +251,9 @@ impl AccelerationStructure {
                     transform_offset: 0,
                 }]],
             );
-            recorder
-                .referenced_resources
-                .push(Box::new(accel_struct.clone()));
-            recorder.referenced_resources.push(Box::new(scratch_buffer));
-            recorder
-                .referenced_resources
-                .push(Box::new(instances_buffer));
+            recorder.track_resource(accel_struct.clone().command_buffer_resource());
+            recorder.track_resource(scratch_buffer.command_buffer_resource());
+            recorder.track_resource(instances_buffer.command_buffer_resource());
         });
         accel_struct
     }

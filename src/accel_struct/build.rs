@@ -3,6 +3,7 @@ use std::{ops::Range, sync::Arc};
 
 use super::AccelerationStructure;
 use super::AccelerationStructureLoader;
+use crate::command::recorder::CommandBufferResource;
 use crate::resources::alloc::MemBuffer;
 use crate::resources::alloc::MemoryAllocScenario;
 use crate::resources::alloc::{Allocator, BufferRequest};
@@ -135,7 +136,7 @@ impl AccelerationStructureBuilder {
                 self.builds
                     .iter()
                     .flat_map(|build| build.geometries.iter().map(|g| g.0.clone()))
-                    .map(|arc| Box::new(arc) as Box<dyn Send + Sync>),
+                    .map(|arc| arc.command_buffer_resource()),
             );
             let acceleration_structures = self
                 .builds
@@ -146,9 +147,9 @@ impl AccelerationStructureBuilder {
                 acceleration_structures
                     .iter()
                     .cloned()
-                    .map(|a| Box::new(a) as Box<dyn Send + Sync>),
+                    .map(|a| a.command_buffer_resource()),
             );
-            recorder.referenced_resources.push(Box::new(scratch_buffer));
+            recorder.referenced_resources.push(scratch_buffer.command_buffer_resource());
             acceleration_structures
         })
     }
