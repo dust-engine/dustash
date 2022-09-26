@@ -6,6 +6,8 @@ use ash::vk;
 use crate::command::recorder::{CommandRecorder, CommandBufferResource};
 use crate::resources::{HasBuffer, HasImage};
 
+mod pipeline;
+mod pass;
 use self::pipline_stage_order::access_is_write;
 pub struct RenderGraph {
     heads: BinaryHeap<BinaryHeapKeyedEntry<Rc<RefCell<RenderGraphNode>>>>,
@@ -33,7 +35,7 @@ impl<T> Eq for BinaryHeapKeyedEntry<T> {
 
 struct RenderGraphNode {
     nexts: Vec<BinaryHeapKeyedEntry<Rc<RefCell<RenderGraphNode>>>>,
-    config: NodeConfig,
+    config: RenderGraphContext,
 }
 
 pub struct Then {
@@ -44,6 +46,13 @@ pub struct ResourceHandle<T> {
     idx: usize,
     _marker: PhantomData<T>
 }
+impl<T> Clone for ResourceHandle<T> {
+    fn clone(&self) -> Self {
+        Self { idx: self.idx, _marker: PhantomData }
+    }
+}
+impl<T> Copy for ResourceHandle<T> {
+}
 
 impl RenderGraph {
     pub fn new() -> Self {
@@ -52,11 +61,11 @@ impl RenderGraph {
             resources: Vec::new(),
         }
     }
-    pub fn start<F: FnOnce(&mut NodeConfig) + 'static>(
+    pub fn start<F: FnOnce(&mut RenderGraphContext) + 'static>(
         &mut self,
         run: F,
     ) -> Then {
-        let mut config = NodeConfig::new();
+        let mut config = RenderGraphContext::new();
         run(&mut config);
         let node = BinaryHeapKeyedEntry(config.priority, Rc::new(RefCell::new(RenderGraphNode {
             nexts: Vec::new(),
@@ -77,18 +86,16 @@ impl RenderGraph {
 
     pub fn import_image<T: HasImage + Send + Sync + 'static>(&mut self, resource: T) -> ResourceHandle<T> {
         let idx = self.resources.len();
-        self.resources.push(Resource::Other(Box::new(resource)));
+        self.resources.push(Resource::Image(Box::new(resource)));
         ResourceHandle { idx, _marker: PhantomData }
     }
 
     pub fn import_buffer<T: HasBuffer + Send + Sync + 'static>(&mut self, resource: T) -> ResourceHandle<T> {
         let idx = self.resources.len();
-        self.resources.push(Resource::Other(Box::new(resource)));
+        self.resources.push(Resource::Buffer(Box::new(resource)));
         ResourceHandle { idx, _marker: PhantomData }
     }
-
-    pub fn run(mut self) {
-        let mut ctx = RenderGraphContext::new();
+    pub fn run(mut self, mut command_recorder: CommandRecorder) {
         let mut resources = self.resources.into_iter().map(|res| ResourceState {
             resource: res,
             dirty_stages: vk::PipelineStageFlags2::empty(),
@@ -193,7 +200,7 @@ impl RenderGraph {
                     res.prev_write = is_write;
                 }
                 unsafe {
-                    ctx.command_recorder.pipeline_barrier2(
+                    command_recorder.pipeline_barrier2(
                         &vk::DependencyInfo {
                             dependency_flags: vk::DependencyFlags::BY_REGION,
                             memory_barrier_count: global_barries.len() as u32,
@@ -207,13 +214,17 @@ impl RenderGraph {
                     );
                 }
                 // Execute the command.
+                let mut ctx = RenderGraphRecordingContext {
+                    command_recorder: &command_recorder,
+                    resources: resources.as_slice()
+                };
                 (record)(&mut ctx);
             }
 
             let new_heads = head.nexts.drain_filter(|next| Rc::strong_count(&mut next.1) == 1);
             self.heads.extend(new_heads);
         }
-        ctx.command_recorder.referenced_resources.extend(resources.into_iter().map(|a| match a.resource {
+        command_recorder.referenced_resources.extend(resources.into_iter().map(|a| match a.resource {
             Resource::Other(res) => res.command_buffer_resource(),
             Resource::Buffer(buffer) => buffer.boxed_type_erased().command_buffer_resource(),
             Resource::Image(image) => image.boxed_type_erased().command_buffer_resource(),
@@ -245,11 +256,11 @@ pub struct ResourceState {
 }
 
 impl Then {
-    pub fn then<F: FnOnce(&mut NodeConfig) + 'static>(
+    pub fn then<F: FnOnce(&mut RenderGraphContext) + 'static>(
         &self,
         run: F,
     ) -> Then {
-        let mut config = NodeConfig::new();
+        let mut config = RenderGraphContext::new();
         run(&mut config);
         let node = BinaryHeapKeyedEntry(config.priority, Rc::new(RefCell::new(RenderGraphNode {
             nexts: Vec::new(),
@@ -279,10 +290,26 @@ impl Then {
 }
 
 
-pub struct RenderGraphContext<'a> {
-    command_recorder: CommandRecorder<'a>
+pub struct RenderGraphRecordingContext<'a> {
+    command_recorder: &'a CommandRecorder<'a>,
+    resources: &'a [ResourceState],
 }
-pub struct NodeConfig {
+
+impl<'a> RenderGraphRecordingContext<'a> {
+    pub fn get_image<T: HasImage>(&self, handle: ResourceHandle<T>) -> &(dyn HasImage + Send + Sync) {
+        match &self.resources[handle.idx].resource {
+            Resource::Image(img) => img.as_ref(),
+            _ => panic!("Error: Resource wasn't imported as an image")
+        }
+    }
+    pub fn get_buffer<T: HasBuffer>(&self, handle: ResourceHandle<T>) -> &(dyn HasBuffer + Send + Sync) {
+        match &self.resources[handle.idx].resource {
+            Resource::Buffer(buf) => buf.as_ref(),
+            _ => panic!("Error: Resource wasn't imported as an image")
+        }
+    }
+}
+pub struct RenderGraphContext {
     /// The priority of the task.
     ///
     /// The value of this priority could be fine tuned to ensure maximum overlapping.
@@ -290,11 +317,11 @@ pub struct NodeConfig {
     /// A node should have lower priority if it consumes many results that are expensive to produce.
     /// A node should have higher priority if it is expensive to execute and its products are consumed by many dependent nodes.
     priority: isize,
-    record: Option<Box<dyn FnOnce(&mut RenderGraphContext)>>,
+    record: Option<Box<dyn FnOnce(&mut RenderGraphRecordingContext)>>,
     accesses: Vec<Access>,
 }
-impl NodeConfig {
-    pub fn record(&mut self, record: impl FnOnce(&mut RenderGraphContext) + 'static) -> &mut Self {
+impl RenderGraphContext {
+    pub fn record(&mut self, record: impl FnOnce(&mut RenderGraphRecordingContext) + 'static) -> &mut Self {
         self.record = Some(Box::new(record));
         self
     }
@@ -350,20 +377,58 @@ impl NodeConfig {
         });
         self
     }
+
+    pub fn copy_buffer<S: HasBuffer, T: HasBuffer>(
+        &mut self,
+        src: ResourceHandle<S>,
+        dst: ResourceHandle<T>,
+        region: vk::BufferCopy
+    ) {
+        self.buffer_access(src, vk::PipelineStageFlags2::COPY, vk::AccessFlags2::TRANSFER_READ, region.src_offset, region.size);
+        self.buffer_access(dst, vk::PipelineStageFlags2::COPY, vk::AccessFlags2::TRANSFER_WRITE, region.dst_offset, region.size);
+        
+        self.record(move |cb| unsafe {
+            cb.command_recorder.device.cmd_copy_buffer(
+                cb.command_recorder.command_buffer,
+                cb.get_buffer(src).raw_buffer(),
+                cb.get_buffer(dst).raw_buffer(),
+                &[region]
+            )
+        });
+    }
+    pub fn copy_buffer_batched<S: HasBuffer, T: HasBuffer>(
+        &mut self,
+        src: ResourceHandle<S>,
+        dst: ResourceHandle<T>,
+        regions: impl IntoIterator<Item = vk::BufferCopy>
+    ) {
+        let regions: Vec<vk::BufferCopy> = regions.into_iter().collect();
+        if regions.len() > 1 {
+            // If copying multiple regions, use global barrier instead.
+            // Buffer barriers don't actually do anything useful. No current GPUs can performance such fine grained syncronization.
+            self.access(src, vk::PipelineStageFlags2::COPY, vk::AccessFlags2::TRANSFER_READ);
+            self.access(dst, vk::PipelineStageFlags2::COPY, vk::AccessFlags2::TRANSFER_WRITE);
+        } else {
+            let region = &regions[0];
+            self.buffer_access(src, vk::PipelineStageFlags2::COPY, vk::AccessFlags2::TRANSFER_READ, region.src_offset, region.size);
+            self.buffer_access(dst, vk::PipelineStageFlags2::COPY, vk::AccessFlags2::TRANSFER_WRITE, region.dst_offset, region.size);
+        }
+        self.record(move |cb| unsafe {
+            cb.command_recorder.device.cmd_copy_buffer(
+                cb.command_recorder.command_buffer,
+                cb.get_buffer(src).raw_buffer(),
+                cb.get_buffer(dst).raw_buffer(),
+                &regions
+            )
+        });
+    }
 }
-impl NodeConfig {
+impl RenderGraphContext {
     fn new() -> Self {
         Self {
             priority: 0,
             record: None,
             accesses: Vec::new()
-        }
-    }
-}
-impl<'a> RenderGraphContext<'a> {
-    fn new() -> Self {
-        Self {
-            command_recorder: todo!()
         }
     }
 }

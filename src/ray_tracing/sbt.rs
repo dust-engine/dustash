@@ -3,7 +3,7 @@ use std::{alloc::Layout, sync::Arc};
 use crate::{
     resources::alloc::{Allocator, BufferRequest, MemBuffer},
     shader::SpecializedShader,
-    sync::CommandsFuture,
+    sync::CommandsFuture, graph::{RenderGraphContext, ResourceHandle, RenderGraph},
 };
 
 use super::pipeline::{RayTracingLoader, RayTracingPipeline};
@@ -162,11 +162,14 @@ impl SbtHandles {
 
 pub struct Sbt {
     pub(super) pipeline: Arc<RayTracingPipeline>,
-    pub(super) buf: Arc<MemBuffer>,
     pub(super) raygen_sbt: vk::StridedDeviceAddressRegionKHR,
     pub(super) miss_sbt: vk::StridedDeviceAddressRegionKHR,
     pub(super) hit_sbt: vk::StridedDeviceAddressRegionKHR,
     pub(super) callable_sbt: vk::StridedDeviceAddressRegionKHR,
+    total_size: u64,
+
+    buf_handle: ResourceHandle<MemBuffer>,
+    staging_handle: Option<ResourceHandle<MemBuffer>>,
 }
 
 impl std::fmt::Debug for Sbt  {
@@ -202,7 +205,7 @@ impl Sbt {
         callable_data: impl IntoIterator<Item = RCALLABLE>,
         rhit_data: impl IntoIterator<Item = (usize, RHIT), IntoIter = RhitIter>, // Iterator to HitGroup, HitGroup Parameter
         allocator: &Arc<Allocator>,
-        commands_future: &mut CommandsFuture,
+        render_graph: &mut RenderGraph,
     ) -> Sbt
     where
         RGEN: Copy,
@@ -280,7 +283,7 @@ impl Sbt {
                 ..Default::default()
             })
             .unwrap();
-        let mut staging_buffer = if target_membuffer
+        let mut staging_buffer = if !target_membuffer
             .memory_flags
             .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
         {
@@ -400,27 +403,18 @@ impl Sbt {
                 }
             }
         });
-        let target_membuffer = Arc::new(target_membuffer);
-
-        if let Some(staging_buffer) = staging_buffer {
-            commands_future.then_commands(|mut recorder| {
-                recorder.copy_buffer(
-                    staging_buffer,
-                    target_membuffer.clone(),
-                    &[vk::BufferCopy {
-                        src_offset: 0,
-                        dst_offset: 0,
-                        size: sbt_layout.size() as u64,
-                    }],
-                );
-            });
-        }
-
         let base_device_address = target_membuffer.device_address();
+
+        let target_buffer_handle = render_graph.import(target_membuffer);
+        let staging_buffer_handle = if let Some(staging_buffer) = staging_buffer {
+            Some(render_graph.import(staging_buffer))
+        } else {
+            None
+        };
+
         assert!(base_device_address % pipeline.handles.group_base_alignment as u64 == 0);
         let sbt = Sbt {
             pipeline,
-            buf: target_membuffer,
             raygen_sbt: vk::StridedDeviceAddressRegionKHR {
                 device_address: base_device_address,
                 // VUID-vkCmdTraceRaysKHR-size-04023: The size member of pRayGenShaderBindingTable must be equal to its stride member
@@ -449,8 +443,24 @@ impl Sbt {
                 stride: hitgroup_layout_one.pad_to_align().size() as u64,
                 size: hitgroup_layout.pad_to_align().size() as u64,
             },
+            total_size: sbt_layout.size() as u64,
+            buf_handle: target_buffer_handle,
+            staging_handle: staging_buffer_handle,
         };
         sbt
+    }
+
+
+    pub fn transfer(&self, ctx: &mut RenderGraphContext) {
+        if let Some(staging) = self.staging_handle {
+            ctx.copy_buffer(staging, self.buf_handle, 
+                vk::BufferCopy {
+                    src_offset: 0,
+                    dst_offset: 0,
+                    size: self.total_size,
+                }
+            )
+        }
     }
 }
 
