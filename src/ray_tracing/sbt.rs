@@ -54,7 +54,7 @@ impl SbtLayout {
         let mut hitgroup_shaders: Vec<(vk::ShaderStageFlags, SpecializedShader)> =
             Vec::with_capacity(hitgroups.len() * 3);
         let hitgroup_entries: Vec<HitGroupEntry> = hitgroups
-            .into_iter()
+            .iter()
             .map(|hitgroup| {
                 let mut entry = HitGroupEntry {
                     ty: hitgroup.ty,
@@ -76,6 +76,7 @@ impl SbtLayout {
                                         .push(($shader_stage_flags, hitgroup_shader.clone()));
                                     index
                                 });
+                            hitgroup_shaders[index].0 |= $shader_stage_flags;
                             entry.$shader_type = Some(index as u32);
                         }
                     };
@@ -167,10 +168,10 @@ pub struct Sbt {
     pub(super) miss_sbt: vk::StridedDeviceAddressRegionKHR,
     pub(super) hit_sbt: vk::StridedDeviceAddressRegionKHR,
     pub(super) callable_sbt: vk::StridedDeviceAddressRegionKHR,
-    total_size: u64,
+    pub(crate) total_size: u64,
 
-    buf_handle: ResourceHandle<MemBuffer>,
-    staging_handle: Option<ResourceHandle<MemBuffer>>,
+    pub(crate) buf_handle: ResourceHandle<MemBuffer>,
+    pub(crate) staging_handle: Option<ResourceHandle<MemBuffer>>,
 }
 
 impl std::fmt::Debug for Sbt {

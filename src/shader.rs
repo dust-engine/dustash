@@ -1,12 +1,14 @@
-use std::sync::Arc;
+use std::{sync::Arc, collections::BTreeMap};
 
 use ash::vk;
+use rspirv_reflect::{Reflection, DescriptorInfo, DescriptorType};
 
-use crate::{Device, HasDevice};
+use crate::{Device, HasDevice, descriptor::DescriptorSetLayout, ray_tracing::cache::{PipelineCache, PipelineLayoutCreateInfo, DescriptorSetLayoutCreateInfo, Binding}};
 
 pub struct Shader {
     device: Arc<Device>,
     pub(crate) module: vk::ShaderModule,
+    pub(crate) descriptor_sets: BTreeMap<u32, BTreeMap<u32, DescriptorInfo>>,
 }
 
 impl HasDevice for Shader {
@@ -35,41 +37,25 @@ impl Drop for Shader {
 }
 
 impl Shader {
-    pub fn from_glsl(device: Arc<Device>, glsl: &str) -> Self {
-        let shader_module = unsafe {
+    pub fn from_spirv(device: Arc<Device>, spirv: &[u8]) -> Self {
+        let module = unsafe {
             device
                 .create_shader_module(
                     &vk::ShaderModuleCreateInfo {
-                        code_size: glsl.as_bytes().len(),
-                        p_code: glsl.as_ptr() as *const u32,
+                        code_size: spirv.len(),
+                        p_code: spirv.as_ptr() as *const u32,
                         ..Default::default()
                     },
                     None,
                 )
                 .unwrap()
         };
+        let reflection = Reflection::new_from_spirv(spirv).unwrap();
+        println!("{:?}", reflection.0.entry_points);
         Self {
             device,
-            module: shader_module,
-        }
-    }
-
-    pub fn from_spirv(device: Arc<Device>, spirv: &[u32]) -> Self {
-        let shader_module = unsafe {
-            device
-                .create_shader_module(
-                    &vk::ShaderModuleCreateInfo {
-                        code_size: spirv.len() * std::mem::size_of::<u32>(),
-                        p_code: spirv.as_ptr(),
-                        ..Default::default()
-                    },
-                    None,
-                )
-                .unwrap()
-        };
-        Self {
-            device,
-            module: shader_module,
+            module,
+            descriptor_sets: reflection.get_descriptor_sets().unwrap()
         }
     }
 }
@@ -78,10 +64,11 @@ impl Shader {
 pub struct SpecializedShader {
     pub shader: Arc<Shader>,
     pub specialization: SpecializationInfo,
+    pub entry_point: String,
 }
 impl PartialEq for SpecializedShader {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.shader, &other.shader) && self.specialization == other.specialization
+        Arc::ptr_eq(&self.shader, &other.shader) && self.specialization == other.specialization && self.entry_point == other.entry_point
     }
 }
 

@@ -98,16 +98,18 @@ impl DescriptorVec {
             p_binding_flags: flags.as_ptr(),
             ..Default::default()
         };
-        DescriptorSetLayout::new(
-            device,
-            &vk::DescriptorSetLayoutCreateInfo {
-                p_next: &flags as *const _ as *const c_void,
-                flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL,
-                binding_count: binding_counts.len() as u32,
-                p_bindings: bindings.as_ptr(),
-                ..Default::default()
-            },
-        )
+        unsafe {
+            DescriptorSetLayout::new(
+                device,
+                &vk::DescriptorSetLayoutCreateInfo {
+                    p_next: &flags as *const _ as *const c_void,
+                    flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL,
+                    binding_count: binding_counts.len() as u32,
+                    p_bindings: bindings.as_ptr(),
+                    ..Default::default()
+                },
+            )
+        }
     }
     pub fn create_pool(device: Arc<Device>, binding_counts: &[u32; 4]) -> VkResult<DescriptorPool> {
         let mut pool_sizes: [MaybeUninit<vk::DescriptorPoolSize>; 4] = MaybeUninit::uninit_array();

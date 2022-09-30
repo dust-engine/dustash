@@ -1,8 +1,11 @@
+use super::cache::{PipelineCache, PipelineLayoutCreateInfo, Binding, DescriptorSetLayoutCreateInfo};
 use super::sbt::{HitGroupType, SbtHandles, SbtLayout};
-use crate::shader::SpecializedShader;
+use crate::shader::{SpecializedShader, Shader};
 use crate::{Device, HasDevice};
 use ash::extensions::khr;
 use ash::{prelude::VkResult, vk};
+use rspirv_reflect::DescriptorInfo;
+use std::collections::BTreeMap;
 use std::{ops::Deref, sync::Arc};
 
 pub struct PipelineLayout {
@@ -24,11 +27,11 @@ impl crate::debug::DebugObject for PipelineLayout {
 }
 
 impl PipelineLayout {
-    pub fn new(device: Arc<Device>, info: &vk::PipelineLayoutCreateInfo) -> VkResult<Self> {
-        unsafe {
-            let layout = device.create_pipeline_layout(info, None)?;
-            Ok(Self { device, layout })
-        }
+    /// Although PipelineLayoutCreateInfo contains references to descriptor sets, we don't actually need to keep those descriptor sets alive.
+    /// This is because the descriptor sets are internally reference counted by the driver if the PipelineLayout actually need to keep them alive.
+    pub unsafe fn new(device: Arc<Device>, info: &vk::PipelineLayoutCreateInfo) -> VkResult<Self> {
+        let layout = device.create_pipeline_layout(info, None)?;
+        Ok(Self { device, layout })
     }
 }
 impl PipelineLayout {
@@ -103,6 +106,31 @@ pub struct RayTracingPipelineLayout<'a> {
     pub max_recursion_depth: u32,
 }
 impl RayTracingPipeline {
+    pub fn create_from_shaders(
+        loader: Arc<RayTracingLoader>,
+        pipeline_cache: &mut PipelineCache,
+        sbt_layouts: &[SbtLayout],
+    ) -> VkResult<Vec<Self>> {
+        let pipeline_layouts: Vec<_> = sbt_layouts.iter().map(|sbt_layout| {
+            let mut descriptor_sets = ShaderDescriptorSetCollection::new(); // The full pipeline descriptors
+            descriptor_sets.merge(&sbt_layout.raygen_shader.shader, vk::ShaderStageFlags::RAYGEN_KHR);
+            for miss_shader in sbt_layout.miss_shaders.iter() {
+                descriptor_sets.merge(&miss_shader.shader, vk::ShaderStageFlags::MISS_KHR);
+            }
+            for callable_shader in sbt_layout.callable_shaders.iter() {
+                descriptor_sets.merge(&callable_shader.shader, vk::ShaderStageFlags::CALLABLE_KHR);
+            }
+            for (stage, hitgroup_shader) in sbt_layout.hitgroup_shaders.iter() {
+                descriptor_sets.merge(&hitgroup_shader.shader, *stage);
+            }
+            descriptor_sets.create_pipeline_layout(pipeline_cache).clone()
+        }).collect();
+        
+        let layouts: Vec<_> = pipeline_layouts.iter().zip(sbt_layouts.iter()).map(|(pipeline_layout, sbt_layout)| {
+            RayTracingPipelineLayout { pipeline_layout, sbt_layout: sbt_layout, max_recursion_depth: 1 }
+        }).collect();
+        Self::create_many(loader, layouts.as_slice())
+    }
     pub fn create_many(
         loader: Arc<RayTracingLoader>,
         sbt_layouts: &[RayTracingPipelineLayout],
@@ -315,5 +343,59 @@ impl RayTracingPipeline {
             })
             .try_collect::<Vec<_>>()?;
         Ok(pipelines)
+    }
+}
+
+
+/// Utility class for collecting descriptor set from multiple shaders
+pub struct ShaderDescriptorSetCollection(BTreeMap<u32, BTreeMap<u32, (DescriptorInfo, vk::ShaderStageFlags)>>);
+impl ShaderDescriptorSetCollection {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+    pub fn merge(&mut self, other: &Shader, stage: vk::ShaderStageFlags) {
+        let mut conflicted: bool = false;
+        for (other_descriptor_set_id, other_descriptor_set) in other.descriptor_sets.iter() {
+            self.0.entry(*other_descriptor_set_id).and_modify(|this_descriptor_set| {
+                for (other_binding_id, other_binding) in other_descriptor_set {
+                    this_descriptor_set.entry(*other_binding_id).and_modify(|(this_binding, this_stage_flags)| {
+                        if this_binding != other_binding {
+                            conflicted = true;
+                        }
+                        *this_stage_flags |= stage;
+                    }).or_insert_with(|| (other_binding.clone(), stage));
+                }
+            })
+            .or_insert_with(|| other_descriptor_set.iter().map(|(index, info)| (*index, (info.clone(), stage))).collect());
+        }
+        assert!(!conflicted); // TODO: Better error handling
+    }
+    pub fn create_pipeline_layout<'a>(
+        &self,
+        pipeline_cache: &'a mut PipelineCache,
+    ) -> &'a Arc<PipelineLayout> {
+        let info = PipelineLayoutCreateInfo {
+            flags: vk::PipelineLayoutCreateFlags::empty(),
+            set_layouts: self.0.iter().map(|(descriptor_set_index, descriptor_set)| {
+                let bindings = descriptor_set
+                .iter()
+                .map(|(binding_id, (binding, binding_stage))| Binding {
+                    binding: *binding_id,
+                    descriptor_type: vk::DescriptorType::from_raw(binding.ty.0 as i32),
+                    descriptor_count: match binding.binding_count {
+                        rspirv_reflect::BindingCount::One => 1,
+                        rspirv_reflect::BindingCount::StaticSized(count) => count as u32,
+                        rspirv_reflect::BindingCount::Unbounded => todo!(),
+                    },
+                    stage_flags: *binding_stage,
+                }).collect::<Vec<_>>();
+                DescriptorSetLayoutCreateInfo {
+                    flags: vk::DescriptorSetLayoutCreateFlags::empty(),
+                    bindings,
+                }
+            }).collect(),
+            push_constant_ranges: Vec::new()
+        };
+        pipeline_cache.create_pipeline_layout(info)
     }
 }
