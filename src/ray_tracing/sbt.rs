@@ -462,19 +462,35 @@ impl Sbt {
         sbt
     }
 
-    pub fn transfer(&self, ctx: &mut RenderGraphContext) {
-        if let Some(staging) = self.staging_handle {
-            ctx.copy_buffer(
-                staging,
-                self.buf_handle,
-                vk::BufferCopy {
-                    src_offset: 0,
-                    dst_offset: 0,
-                    size: self.total_size,
-                },
-            )
+    pub fn transfer<'a>(&'a self) -> impl FnOnce(&mut RenderGraphContext) + 'a {
+        |ctx: &mut RenderGraphContext| {
+            if let Some(staging) = self.staging_handle {
+                ctx.copy_buffer(
+                    staging,
+                    self.buf_handle,
+                    vk::BufferCopy {
+                        src_offset: 0,
+                        dst_offset: 0,
+                        size: self.total_size,
+                    },
+                )
+            }
         }
     }
+
+    
+    fn trace_rays<'a>(&'a self) -> impl FnOnce(&mut RenderGraphContext) + 'a {
+        |ctx: &mut RenderGraphContext| {
+            ctx.buffer_access(self.buf_handle, vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR, vk::AccessFlags2::SHADER_READ, 0, self.total_size);
+            
+            //ctx.descriptor_set()
+            ctx.record(|ctx| {
+                // ctx.command_recorder.trace_rays(sbt, width, height, depth)
+            });
+            // use vk::AccessFlags2::SHADER_BINDING_TABLE_READ_KHR
+        }
+    }
+
 }
 
 // | raygen: 64 bytes | rmiss: 64 bytes | callable: 2112 bytes | hitgroup: 64 bytes |

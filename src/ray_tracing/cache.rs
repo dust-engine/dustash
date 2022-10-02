@@ -1,8 +1,9 @@
 use crate::{descriptor::DescriptorSetLayout, Device};
-use std::{sync::Arc, collections::HashMap, hash::Hash};
+use std::{sync::Arc, collections::{HashMap}, hash::Hash};
 use ash::vk;
 
-use super::pipeline::PipelineLayout;
+use super::pipeline::{PipelineLayout};
+use super::pipeline::Binding;
 
 pub struct PipelineCache {
     device: Arc<Device>,
@@ -11,17 +12,10 @@ pub struct PipelineCache {
 }
 
 #[derive(Hash, PartialEq, Eq, Clone)]
-pub struct Binding {
-    pub binding: u32,
-    pub descriptor_type: vk::DescriptorType,
-    pub descriptor_count: u32,
-    pub stage_flags: vk::ShaderStageFlags,
-}
-#[derive(Hash, PartialEq, Eq, Clone)]
 pub struct DescriptorSetLayoutCreateInfo {
     pub flags: vk::DescriptorSetLayoutCreateFlags,
     /// Sorted by binding index
-    pub bindings: Vec<Binding>
+    pub bindings: Vec<(u32, Binding)>
 }
 
 #[repr(C)]
@@ -40,13 +34,16 @@ pub struct PipelineLayoutCreateInfo {
 }
  
 impl PipelineCache {
-    fn create_descriptor_set_layout_inner<'a>(device: &'a Arc<Device>, map: &'a mut HashMap<DescriptorSetLayoutCreateInfo, Arc<DescriptorSetLayout>>, info: DescriptorSetLayoutCreateInfo) -> &'a Arc<DescriptorSetLayout>{
+    fn create_descriptor_set_layout_inner<'a>(
+        device: &'a Arc<Device>,
+        map: &'a mut HashMap<DescriptorSetLayoutCreateInfo, Arc<DescriptorSetLayout>>,
+        info: DescriptorSetLayoutCreateInfo) -> &'a Arc<DescriptorSetLayout>{
         map.entry(info).or_insert_with_key(|info| {
-            let bindings: Vec<_> = info.bindings.iter().map(|binding| vk::DescriptorSetLayoutBinding {
-                binding: binding.binding,
-                descriptor_type: binding.descriptor_type,
-                descriptor_count: binding.descriptor_count,
-                stage_flags: binding.stage_flags,
+            let bindings: Vec<_> = info.bindings.iter().map(|(binding_index, binding)| vk::DescriptorSetLayoutBinding {
+                binding: *binding_index,
+                descriptor_type: binding.ty,
+                descriptor_count: binding.count,
+                stage_flags: binding.shader_read_stage_flags | binding.shader_read_stage_flags,
                 p_immutable_samplers: std::ptr::null(),
             }).collect();
             let layout = unsafe {
@@ -67,7 +64,7 @@ impl PipelineCache {
                 let set = Self::create_descriptor_set_layout_inner(&self.device, &mut self.descriptor_set_layouts, layout.clone());
                 set.raw()
             }).collect();
-            let info = vk::PipelineLayoutCreateInfo {
+            let create_info = vk::PipelineLayoutCreateInfo {
                 flags: info.flags,
                 set_layout_count: sets.len() as u32,
                 p_set_layouts: sets.as_ptr(),
@@ -75,8 +72,11 @@ impl PipelineCache {
                 p_push_constant_ranges: info.push_constant_ranges.as_ptr() as *const _,
                 ..Default::default()
             };
+            let descriptor_set_indexes = info.set_layouts.iter().map(|layout| {
+                layout.bindings.iter().map(|(index, binding)| (*index, binding.clone())).collect()
+            }).collect();
             let layout = unsafe {
-                PipelineLayout::new(self.device.clone(), &info).unwrap()
+                PipelineLayout::new(self.device.clone(), &create_info, descriptor_set_indexes).unwrap()
             };
             Arc::new(layout)
         })

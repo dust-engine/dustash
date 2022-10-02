@@ -3,7 +3,7 @@ use std::{sync::Arc, collections::BTreeMap};
 use ash::vk;
 use rspirv_reflect::{Reflection, DescriptorInfo, DescriptorType};
 
-use crate::{Device, HasDevice, descriptor::DescriptorSetLayout, ray_tracing::cache::{PipelineCache, PipelineLayoutCreateInfo, DescriptorSetLayoutCreateInfo, Binding}};
+use crate::{Device, HasDevice, descriptor::DescriptorSetLayout, ray_tracing::cache::{PipelineCache, PipelineLayoutCreateInfo, DescriptorSetLayoutCreateInfo}};
 
 pub struct Shader {
     device: Arc<Device>,

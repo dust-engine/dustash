@@ -1,12 +1,12 @@
 use ash::vk;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, BTreeMap};
 use std::rc::Weak;
 use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use crate::command::recorder::{CommandBufferResource, CommandRecorder};
+use crate::ray_tracing::pipeline::Binding;
 use crate::resources::{HasBuffer, HasImage};
 
-mod pass;
 mod pipeline;
 use self::pipline_stage_order::access_is_write;
 pub struct RenderGraph {
@@ -349,6 +349,9 @@ pub struct RenderGraphContext {
     priority: isize,
     record: Option<Box<dyn FnOnce(&mut RenderGraphRecordingContext)>>,
     accesses: Vec<Access>,
+
+    // Mapping: set id -> binding id -> resource id
+    bindings: BTreeMap<u32, BTreeMap<u32, usize>>
 }
 impl RenderGraphContext {
     pub fn record(
@@ -387,6 +390,9 @@ impl RenderGraphContext {
         stage: vk::PipelineStageFlags2,
         access: vk::AccessFlags2,
     ) -> &mut Self {
+        if stage == vk::PipelineStageFlags2::empty() {
+            return self;
+        }
         self.accesses.push(Access {
             idx: resource.idx,
             stage,
@@ -415,6 +421,25 @@ impl RenderGraphContext {
         self
     }
 
+    pub fn bind<T>(&mut self, set_id: u32, binding: u32, resource: ResourceHandle<T>) {
+        // self.access(resource, stage, access); // get stage, access from stuff.
+        let old_id = self.bindings.entry(set_id).or_default().insert(binding, resource.idx);
+        assert!(old_id.is_none(), "Duplicated binding");
+        let binding: &Binding = todo!();
+        self.access(
+            resource,
+            crate::util::shader_stage_to_pipeline_stage(binding.shader_read_stage_flags),
+            crate::util::descriptor_type_to_access_flags_read(binding.ty)
+        );
+        self.access(
+            resource,
+            crate::util::shader_stage_to_pipeline_stage(binding.shader_write_stage_flags),
+            crate::util::descriptor_type_to_access_flags_write(binding.ty)
+        );
+    }
+
+    /// Convenient method to copy buffer.
+    /// Calls `buffer_access` and record the command buffer.
     pub fn copy_buffer<S: HasBuffer, T: HasBuffer>(
         &mut self,
         src: ResourceHandle<S>,
@@ -445,6 +470,8 @@ impl RenderGraphContext {
             )
         });
     }
+    /// Convenient method to copy more than one region in the same buffer.
+    /// Calls `buffer_access` and record the command buffer.
     pub fn copy_buffer_batched<S: HasBuffer, T: HasBuffer>(
         &mut self,
         src: ResourceHandle<S>,
@@ -498,6 +525,7 @@ impl RenderGraphContext {
             priority: 0,
             record: None,
             accesses: Vec::new(),
+            bindings: BTreeMap::new()
         }
     }
 }
@@ -523,48 +551,23 @@ enum Barrier {
 
 #[cfg(test)]
 mod tests {
+    use crate::ray_tracing::sbt::Sbt;
+
     use super::*;
     #[test]
     fn test() {
         let mut graph = RenderGraph::new();
-        let temp1 = graph
-            .start(|ctx| {
-                ctx.record(|ctx| {
-                    println!("A");
-                });
-            })
-            .then(|ctx| {
-                ctx.record(|ctx| {
-                    println!("B");
-                });
-            });
+        let sbt = Sbt::new(
+            todo!(),
+            [0],
+            [0],
+            [0],
+            [(0, 0)],
+            todo!(),
+            &mut graph
+        );
 
-        let temp2 = temp1
-            .then(|ctx| {
-                ctx.record(|ctx| {
-                    println!("C");
-                });
-            })
-            .then(|ctx| {
-                ctx.priority = 10000;
-                ctx.record(|ctx| {
-                    println!("D");
-                });
-            });
-        let temp3 = temp1.then(|ctx| {
-            ctx.priority = 100;
-            ctx.record(|ctx| {
-                println!("E");
-            });
-        });
-
-        let temp3 = temp1.join(&temp2).join(&temp3).then(|ctx| {
-            ctx.record(|ctx| {
-                println!("Success");
-            });
-        });
-
-        graph.run();
+        graph.start(sbt.transfer());
     }
 }
 
