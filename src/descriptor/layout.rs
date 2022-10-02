@@ -9,7 +9,10 @@ pub struct DescriptorSetLayout {
     pub(super) raw: vk::DescriptorSetLayout,
 }
 impl DescriptorSetLayout {
-    pub unsafe fn new(device: Arc<Device>, info: &vk::DescriptorSetLayoutCreateInfo) -> VkResult<Self> {
+    pub unsafe fn new(
+        device: Arc<Device>,
+        info: &vk::DescriptorSetLayoutCreateInfo,
+    ) -> VkResult<Self> {
         let raw = device.create_descriptor_set_layout(info, None)?;
         Ok(Self { device, raw })
     }

@@ -15,6 +15,7 @@ use std::ops::Deref;
 
 pub mod command;
 mod debug;
+pub mod pipeline;
 pub(crate) mod util;
 pub use debug::DebugUtilsMessenger;
 pub mod accel_struct;

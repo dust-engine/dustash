@@ -1,9 +1,13 @@
-use std::{sync::Arc, collections::BTreeMap};
+use std::{collections::BTreeMap, sync::Arc};
 
 use ash::vk;
-use rspirv_reflect::{Reflection, DescriptorInfo, DescriptorType};
+use rspirv_reflect::{DescriptorInfo, DescriptorType, Reflection};
 
-use crate::{Device, HasDevice, descriptor::DescriptorSetLayout, ray_tracing::cache::{PipelineCache, PipelineLayoutCreateInfo, DescriptorSetLayoutCreateInfo}};
+use crate::{
+    descriptor::DescriptorSetLayout,
+    ray_tracing::cache::{DescriptorSetLayoutCreateInfo, PipelineCache, PipelineLayoutCreateInfo},
+    Device, HasDevice,
+};
 
 pub struct Shader {
     device: Arc<Device>,
@@ -55,7 +59,7 @@ impl Shader {
         Self {
             device,
             module,
-            descriptor_sets: reflection.get_descriptor_sets().unwrap()
+            descriptor_sets: reflection.get_descriptor_sets().unwrap(),
         }
     }
 }
@@ -68,7 +72,9 @@ pub struct SpecializedShader {
 }
 impl PartialEq for SpecializedShader {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.shader, &other.shader) && self.specialization == other.specialization && self.entry_point == other.entry_point
+        Arc::ptr_eq(&self.shader, &other.shader)
+            && self.specialization == other.specialization
+            && self.entry_point == other.entry_point
     }
 }
 

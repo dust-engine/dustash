@@ -1,8 +1,8 @@
 use crate::command::recorder::CommandRecorder;
 
+pub mod cache;
 pub mod pipeline;
 pub mod sbt;
-pub mod cache;
 
 impl<'a> CommandRecorder<'a> {
     pub fn trace_rays(&mut self, sbt: &sbt::Sbt, width: u32, height: u32, depth: u32) {

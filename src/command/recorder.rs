@@ -263,7 +263,7 @@ impl<'a> CommandRecorder<'a> {
     pub fn bind_descriptor_set(
         &mut self,
         bind_point: vk::PipelineBindPoint,
-        pipeline_layout: &crate::ray_tracing::pipeline::PipelineLayout,
+        pipeline_layout: &crate::pipeline::PipelineLayout,
         first_set: u32,
         descriptor_sets: &[vk::DescriptorSet],
         dynamic_offsets: &[u32],
@@ -281,7 +281,7 @@ impl<'a> CommandRecorder<'a> {
     }
     pub fn push_constants(
         &mut self,
-        pipeline_layout: &crate::ray_tracing::pipeline::PipelineLayout,
+        pipeline_layout: &crate::pipeline::PipelineLayout,
         stage_flags: vk::ShaderStageFlags,
         offset: u32,
         constants: &[u8],
