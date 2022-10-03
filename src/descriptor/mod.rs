@@ -2,11 +2,11 @@ mod layout;
 mod pool;
 mod vec;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use crate::{Device, HasDevice};
+use crate::HasDevice;
 
-use ash::{prelude::VkResult, vk};
+use ash::vk;
 
 pub use layout::DescriptorSetLayout;
 pub use pool::DescriptorPool;

@@ -4,7 +4,7 @@ use std::rc::Weak;
 use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use crate::command::recorder::{CommandBufferResource, CommandRecorder};
-use crate::pipeline::Binding;
+use crate::pipeline::{Binding, Pipeline};
 use crate::resources::{HasBuffer, HasImage};
 
 pub struct RenderGraph {
@@ -355,6 +355,11 @@ pub struct RenderGraphContext {
     // Mapping: set id -> binding id -> resource id
     bindings: BTreeMap<u32, BTreeMap<u32, usize>>,
 }
+pub struct RenderGraphPipelineContext<'a, P: Pipeline> {
+    inner: &'a mut RenderGraphContext,
+    pipeline: &'a P,
+}
+
 impl RenderGraphContext {
     pub fn record(
         &mut self,
@@ -422,26 +427,14 @@ impl RenderGraphContext {
         });
         self
     }
-
-    pub fn bind<T>(&mut self, set_id: u32, binding: u32, resource: ResourceHandle<T>) {
-        // self.access(resource, stage, access); // get stage, access from stuff.
-        let old_id = self
-            .bindings
-            .entry(set_id)
-            .or_default()
-            .insert(binding, resource.idx);
-        assert!(old_id.is_none(), "Duplicated binding");
-        let binding: &Binding = todo!();
-        self.access(
-            resource,
-            crate::util::shader_stage_to_pipeline_stage(binding.shader_read_stage_flags),
-            crate::util::descriptor_type_to_access_flags_read(binding.ty),
-        );
-        self.access(
-            resource,
-            crate::util::shader_stage_to_pipeline_stage(binding.shader_write_stage_flags),
-            crate::util::descriptor_type_to_access_flags_write(binding.ty),
-        );
+    pub fn pipeline<'a, P: Pipeline>(
+        &'a mut self,
+        pipeline: &'a P,
+    ) -> RenderGraphPipelineContext<'a, P> {
+        RenderGraphPipelineContext {
+            inner: self,
+            pipeline,
+        }
     }
 
     /// Convenient method to copy buffer.
@@ -524,8 +517,7 @@ impl RenderGraphContext {
             )
         });
     }
-}
-impl RenderGraphContext {
+
     fn new() -> Self {
         Self {
             priority: 0,
@@ -533,6 +525,33 @@ impl RenderGraphContext {
             accesses: Vec::new(),
             bindings: BTreeMap::new(),
         }
+    }
+}
+
+impl<'a, P: Pipeline> RenderGraphPipelineContext<'a, P> {
+    pub fn bind<T>(&mut self, set_id: u32, binding_id: u32, resource: ResourceHandle<T>) {
+        // Insert into self.inner.bindings
+        let old_id = self
+            .inner
+            .bindings
+            .entry(set_id)
+            .or_default()
+            .insert(binding_id, resource.idx);
+        assert!(old_id.is_none(), "Duplicated binding");
+        let binding: &Binding = self
+            .pipeline
+            .binding(set_id, binding_id)
+            .expect("Unknown binding");
+        self.inner.access(
+            resource,
+            crate::util::shader_stage_to_pipeline_stage(binding.shader_read_stage_flags),
+            crate::util::descriptor_type_to_access_flags_read(binding.ty),
+        );
+        self.inner.access(
+            resource,
+            crate::util::shader_stage_to_pipeline_stage(binding.shader_write_stage_flags),
+            crate::util::descriptor_type_to_access_flags_write(binding.ty),
+        );
     }
 }
 

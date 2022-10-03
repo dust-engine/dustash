@@ -1,13 +1,12 @@
 use super::cache::{DescriptorSetLayoutCreateInfo, PipelineCache, PipelineLayoutCreateInfo};
 use super::sbt::{HitGroupType, SbtHandles, SbtLayout};
 use crate::pipeline::utils::ShaderDescriptorSetCollection;
-use crate::pipeline::{Binding, PipelineLayout};
-use crate::shader::{Shader, SpecializedShader};
+use crate::pipeline::{Binding, Pipeline, PipelineLayout};
+use crate::shader::SpecializedShader;
 use crate::{Device, HasDevice};
 use ash::extensions::khr;
 use ash::{prelude::VkResult, vk};
-use rspirv_reflect::DescriptorInfo;
-use std::collections::BTreeMap;
+
 use std::{ops::Deref, sync::Arc};
 
 pub struct RayTracingLoader {
@@ -47,6 +46,14 @@ impl RayTracingPipeline {
 impl HasDevice for RayTracingPipeline {
     fn device(&self) -> &Arc<Device> {
         &self.loader.device
+    }
+}
+impl Pipeline for RayTracingPipeline {
+    fn binding(&self, descriptor_id: u32, binding_id: u32) -> Option<&Binding> {
+        self.layout
+            .descriptor_sets
+            .get(descriptor_id as usize)
+            .and_then(|a| a.get(&binding_id))
     }
 }
 impl crate::debug::DebugObject for RayTracingPipeline {

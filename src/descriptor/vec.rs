@@ -1,6 +1,6 @@
 use std::{ffi::c_void, mem::MaybeUninit, sync::Arc};
 
-use crate::{command::pool, Device, HasDevice};
+use crate::{Device, HasDevice};
 
 use super::{DescriptorPool, DescriptorSet, DescriptorSetLayout};
 use ash::{prelude::VkResult, vk};

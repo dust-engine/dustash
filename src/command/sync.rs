@@ -1,4 +1,4 @@
-use std::{mem::MaybeUninit, ptr::null};
+use std::ptr::null;
 
 use ash::vk;
 

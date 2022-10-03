@@ -4,7 +4,6 @@ use crate::{
     graph::{RenderGraph, RenderGraphContext, ResourceHandle},
     resources::alloc::{Allocator, BufferRequest, MemBuffer},
     shader::SpecializedShader,
-    sync::CommandsFuture,
 };
 
 use super::pipeline::{RayTracingLoader, RayTracingPipeline};
@@ -489,7 +488,7 @@ impl Sbt {
             );
 
             //ctx.descriptor_set()
-            ctx.record(|ctx| {
+            ctx.record(|_ctx| {
                 // ctx.command_recorder.trace_rays(sbt, width, height, depth)
             });
             // use vk::AccessFlags2::SHADER_BINDING_TABLE_READ_KHR

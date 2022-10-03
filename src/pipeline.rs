@@ -13,7 +13,11 @@ pub struct Binding {
 pub struct PipelineLayout {
     device: Arc<Device>,
     pub(crate) layout: vk::PipelineLayout,
-    descriptor_sets: Vec<BTreeMap<u32, Binding>>,
+    pub(crate) descriptor_sets: Vec<BTreeMap<u32, Binding>>,
+}
+
+pub trait Pipeline {
+    fn binding(&self, descriptor_id: u32, binding_id: u32) -> Option<&Binding>;
 }
 
 impl HasDevice for PipelineLayout {
@@ -227,7 +231,7 @@ pub mod utils {
             }
             self.0
                 .into_iter()
-                .map(|(descriptor_set_index, descriptor_set)| descriptor_set)
+                .map(|(_descriptor_set_index, descriptor_set)| descriptor_set)
         }
     }
 }
