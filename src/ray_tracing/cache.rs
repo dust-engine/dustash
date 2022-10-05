@@ -81,7 +81,7 @@ impl PipelineCache {
         self.pipeline_layouts
             .entry(info)
             .or_insert_with_key(|info| {
-                let sets: Vec<vk::DescriptorSetLayout> = info
+                let sets: Vec<_> = info
                     .set_layouts
                     .iter()
                     .map(|layout| {
@@ -90,13 +90,14 @@ impl PipelineCache {
                             &mut self.descriptor_set_layouts,
                             layout.clone(),
                         );
-                        set.raw()
+                        set.clone()
                     })
                     .collect();
+                let raw_sets: Vec<vk::DescriptorSetLayout> = sets.iter().map(|a| a.raw()).collect();
                 let create_info = vk::PipelineLayoutCreateInfo {
                     flags: info.flags,
-                    set_layout_count: sets.len() as u32,
-                    p_set_layouts: sets.as_ptr(),
+                    set_layout_count: raw_sets.len() as u32,
+                    p_set_layouts: raw_sets.as_ptr(),
                     push_constant_range_count: info.push_constant_ranges.len() as u32,
                     p_push_constant_ranges: info.push_constant_ranges.as_ptr() as *const _,
                     ..Default::default()
@@ -104,12 +105,14 @@ impl PipelineCache {
                 let descriptor_set_indexes = info
                     .set_layouts
                     .iter()
-                    .map(|layout| {
-                        layout
+                    .zip(sets.into_iter())
+                    .map(|(layout, set)| {
+                        let bindings = layout
                             .bindings
                             .iter()
                             .map(|(index, binding)| (*index, binding.clone()))
-                            .collect()
+                            .collect();
+                        (bindings, set)
                     })
                     .collect();
                 let layout = unsafe {

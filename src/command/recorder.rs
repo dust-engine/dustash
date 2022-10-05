@@ -71,6 +71,11 @@ impl CommandBufferResource for Box<dyn Send + Sync> {
         ReferencedResource::Boxed(self)
     }
 }
+impl CommandBufferResource for Arc<dyn Send + Sync> {
+    fn command_buffer_resource(self) -> ReferencedResource {
+        ReferencedResource::Arc(self)
+    }
+}
 
 pub enum ReferencedResource {
     Boxed(Box<dyn Send + Sync>),
@@ -260,7 +265,7 @@ impl<'a> CommandRecorder<'a> {
         self.referenced_resources
             .push(pipeline.command_buffer_resource());
     }
-    pub fn bind_descriptor_set(
+    pub unsafe fn bind_descriptor_set(
         &mut self,
         bind_point: vk::PipelineBindPoint,
         pipeline_layout: &crate::pipeline::PipelineLayout,

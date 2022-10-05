@@ -49,11 +49,18 @@ impl HasDevice for RayTracingPipeline {
     }
 }
 impl Pipeline for RayTracingPipeline {
-    fn binding(&self, descriptor_id: u32, binding_id: u32) -> Option<&Binding> {
-        self.layout
-            .descriptor_sets
-            .get(descriptor_id as usize)
-            .and_then(|a| a.get(&binding_id))
+    fn bind_point(&self) -> vk::PipelineBindPoint {
+        vk::PipelineBindPoint::RAY_TRACING_KHR
+    }
+    fn layout(&self) -> &PipelineLayout {
+        &self.layout
+    }
+
+    fn raw(&self) -> vk::Pipeline {
+        self.pipeline
+    }
+    fn arc_type_erased(self: Arc<Self>) -> Arc<dyn Send + Sync> {
+        self
     }
 }
 impl crate::debug::DebugObject for RayTracingPipeline {

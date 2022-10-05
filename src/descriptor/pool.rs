@@ -66,6 +66,33 @@ impl DescriptorPool {
             Ok(descriptors)
         }
     }
+    pub fn allocate_one<'a>(
+        self: &Arc<Self>,
+        layout: &'a DescriptorSetLayout,
+    ) -> VkResult<DescriptorSet> {
+        unsafe {
+            // Safety:
+            // - Host access to pAllocateInfo->descriptorPool must be externally synchronized
+            // We have &mut self and therefore &mut self.raw
+            let raw = self.raw.lock().unwrap();
+            let mut descriptor_set = vk::DescriptorSet::null();
+            (self.device.fp_v1_0().allocate_descriptor_sets)(
+                self.device.handle(),
+                &vk::DescriptorSetAllocateInfo {
+                    descriptor_pool: raw.0,
+                    descriptor_set_count: 1,
+                    p_set_layouts: &layout.raw as *const _,
+                    ..Default::default()
+                },
+                &mut descriptor_set as *mut _,
+            )
+            .result()?;
+            Ok(DescriptorSet {
+                raw: descriptor_set,
+                pool: self.clone(),
+            })
+        }
+    }
     pub fn free(self: &Arc<Self>, sets: impl IntoIterator<Item = DescriptorSet>) -> VkResult<()> {
         let sets = sets
             .into_iter()

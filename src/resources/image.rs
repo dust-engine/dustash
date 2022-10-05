@@ -11,6 +11,11 @@ pub trait HasImage: Send + Sync + 'static {
     }
 }
 
+pub trait HasImageView: HasImage {
+    fn raw_image_view(&self) -> vk::ImageView;
+    fn subresource_range(&self) -> vk::ImageSubresourceRange;
+}
+
 impl HasImage for vk::Image {
     fn raw_image(&self) -> vk::Image {
         *self

@@ -1,4 +1,6 @@
-use crate::{Device, HasDevice};
+use crate::{
+    command::recorder::CommandRecorder, descriptor::DescriptorSetLayout, Device, HasDevice,
+};
 use ash::{prelude::VkResult, vk};
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -13,11 +15,20 @@ pub struct Binding {
 pub struct PipelineLayout {
     device: Arc<Device>,
     pub(crate) layout: vk::PipelineLayout,
-    pub(crate) descriptor_sets: Vec<BTreeMap<u32, Binding>>,
+    pub(crate) descriptor_sets: Vec<(BTreeMap<u32, Binding>, Arc<DescriptorSetLayout>)>,
 }
 
-pub trait Pipeline {
-    fn binding(&self, descriptor_id: u32, binding_id: u32) -> Option<&Binding>;
+pub trait Pipeline: Send + Sync {
+    fn bind_point(&self) -> vk::PipelineBindPoint;
+    fn layout(&self) -> &PipelineLayout;
+    fn binding(&self, descriptor_id: u32, binding_id: u32) -> Option<&Binding> {
+        self.layout()
+            .descriptor_sets
+            .get(descriptor_id as usize)
+            .and_then(|(a, _)| a.get(&binding_id))
+    }
+    fn raw(&self) -> vk::Pipeline;
+    fn arc_type_erased(self: Arc<Self>) -> Arc<dyn Send + Sync>;
 }
 
 impl HasDevice for PipelineLayout {
@@ -39,7 +50,7 @@ impl PipelineLayout {
     pub unsafe fn new(
         device: Arc<Device>,
         info: &vk::PipelineLayoutCreateInfo,
-        descriptor_sets: Vec<BTreeMap<u32, Binding>>,
+        descriptor_sets: Vec<(BTreeMap<u32, Binding>, Arc<DescriptorSetLayout>)>,
     ) -> VkResult<Self> {
         let layout = device.create_pipeline_layout(info, None)?;
         Ok(Self {

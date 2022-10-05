@@ -10,6 +10,7 @@
 #![feature(array_zip)]
 #![feature(drain_filter)]
 #![feature(trait_upcasting)]
+#![feature(let_chains)]
 
 use std::ops::Deref;
 

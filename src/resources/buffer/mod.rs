@@ -32,6 +32,11 @@ pub trait HasBuffer: Send + Sync + 'static {
         Box::new(self)
     }
 }
+pub trait HasBufferView: HasBuffer {
+    fn raw_buffer_view(&self) -> vk::BufferView;
+    // Offset, size
+    fn subresource_range(&self) -> (vk::DeviceSize, vk::DeviceSize);
+}
 
 impl HasBuffer for vk::Buffer {
     fn raw_buffer(&self) -> vk::Buffer {
