@@ -319,14 +319,8 @@ impl RenderGraph {
                             let (_, descriptor_set_layout) = &pipeline_layout.descriptor_sets[set_id as usize];
                             let desc_set = descriptor_pool.allocate_one(descriptor_set_layout).unwrap();
 
-
-                            let mut p_image_infos: Vec<vk::DescriptorImageInfo> = Vec::with_capacity(set.len());
-                            let mut p_buffer_info: Vec<vk::DescriptorBufferInfo> = Vec::with_capacity(set.len());
-                            let mut p_texel_buffer_view: Vec<vk::BufferView> = Vec::with_capacity(set.len());
-                            let mut p_accel_struct: Vec<vk::AccelerationStructureKHR> = Vec::with_capacity(set.len());
-                            let mut p_accel_struct_info: Vec<vk::WriteDescriptorSetAccelerationStructureKHR> = Vec::with_capacity(set.len());
-
-
+                            use std::alloc::Layout;
+                            let mut things_to_drop: Vec<(*mut u8, Layout)> = Vec::with_capacity(set.len() * 2);
                             let writes: Vec<_> = set.iter().map(|(binding_id, (resource_id, binding))| {
                                 let resource = &resources[*resource_id];
                                 let mut base = vk::WriteDescriptorSet {
@@ -335,24 +329,22 @@ impl RenderGraph {
                                     dst_array_element: 0,
                                     descriptor_count: 1,
                                     ..Default::default()
-                                };
+                                }; // TODO: test that this works, and put to use. After that, separate this into multiple files.
                                 match binding {
-                                    RenderGraphContextBinding::Image { layout } => unsafe {
-                                        let index = p_image_infos.len();
+                                    RenderGraphContextBinding::Image { layout } => {
                                         assert_eq!(resource.layout, *layout);
-                                        p_image_infos.push(vk::DescriptorImageInfo {
+                                        base.p_image_info = Box::leak(Box::new(vk::DescriptorImageInfo {
                                             sampler: vk::Sampler::null(),
                                             image_layout: *layout,
                                             image_view: match &resource.resource {
                                                 Resource::ImageView(image_view) => image_view.raw_image_view(),
                                                 _ => panic!()
                                             }
-                                        });
-                                        base.p_image_info = p_image_infos.as_ptr().add(index);
+                                        }));
+                                        things_to_drop.push((base.p_image_info as *mut _, Layout::new::<vk::DescriptorImageInfo>()));
                                     },
-                                    RenderGraphContextBinding::Buffer { offset, size } => unsafe {
-                                        let index = p_buffer_info.len();
-                                        p_buffer_info.push(vk::DescriptorBufferInfo {
+                                    RenderGraphContextBinding::Buffer { offset, size } => {
+                                        base.p_buffer_info = Box::leak(Box::new(vk::DescriptorBufferInfo {
                                             offset: *offset,
                                             range: *size,
                                             buffer: match &resource.resource {
@@ -360,35 +352,40 @@ impl RenderGraph {
                                                 Resource::BufferView(buffer_view) => buffer_view.raw_buffer(),
                                                 _ => panic!()
                                             }
-                                        });
-                                        base.p_buffer_info = p_buffer_info.as_ptr().add(index);
+                                        }));
+                                        things_to_drop.push((base.p_buffer_info as *mut _, Layout::new::<vk::DescriptorBufferInfo>()));
                                     },
-                                    RenderGraphContextBinding::TexelBuffer => unsafe {
-                                        let index = p_texel_buffer_view.len();
-                                        p_texel_buffer_view.push(match &resource.resource {
+                                    RenderGraphContextBinding::TexelBuffer => {
+                                        base.p_texel_buffer_view = Box::leak(Box::new(match &resource.resource {
                                             Resource::BufferView(buffer_view) => buffer_view.raw_buffer_view(),
                                             _ => panic!()
-                                        });
-                                        base.p_texel_buffer_view = p_texel_buffer_view.as_ptr().add(index);
+                                        }));
+                                        things_to_drop.push((base.p_texel_buffer_view as *mut _, Layout::new::<vk::BufferView>()));
                                     },
-                                    RenderGraphContextBinding::AccelerationStructure => unsafe {
-                                        let index = p_accel_struct.len();
-                                        p_accel_struct.push(match &resource.resource {
+                                    RenderGraphContextBinding::AccelerationStructure => {
+                                        let accel_struct_raw = match &resource.resource {
                                             Resource::AccelerationStructure(accel_struct) => accel_struct.raw(),
                                             _ => panic!()
-                                        });
-                                        p_accel_struct_info.push(vk::WriteDescriptorSetAccelerationStructureKHR {
+                                        };
+                                        let accel_struct_ptr = Box::leak(Box::new(accel_struct_raw)) as *mut vk::AccelerationStructureKHR;
+
+                                        let info = Box::leak(Box::new(vk::WriteDescriptorSetAccelerationStructureKHR {
                                             acceleration_structure_count: 1,
-                                            p_acceleration_structures: p_accel_struct.as_ptr().add(index),
+                                            p_acceleration_structures: accel_struct_ptr,
                                             ..Default::default()
-                                        });
-                                        base.p_next = p_accel_struct_info.as_ptr().add(index) as *const _;
+                                        })) as *mut vk::WriteDescriptorSetAccelerationStructureKHR;
+                                        things_to_drop.push((accel_struct_ptr as *mut _, Layout::new::<vk::AccelerationStructureKHR>()));
+                                        things_to_drop.push((info as *mut _, Layout::new::<vk::WriteDescriptorSetAccelerationStructureKHR>()));
+                                        base.p_next = info as *const _;
                                     },
                                 }
                                 base
                             }).collect();
                             unsafe {
                                 command_recorder.device.update_descriptor_sets(writes.as_slice(), &[]);
+                                for (ptr, layout) in things_to_drop.into_iter() {
+                                    std::alloc::dealloc(ptr, layout);
+                                }
                             }
                             Arc::new(desc_set)
                         });
