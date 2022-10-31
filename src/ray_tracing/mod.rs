@@ -1,6 +1,5 @@
 use crate::command::recorder::CommandRecorder;
 
-pub mod cache;
 pub mod pipeline;
 pub mod sbt;
 

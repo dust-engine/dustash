@@ -2,10 +2,10 @@ use crate::{descriptor::DescriptorSetLayout, Device};
 use ash::vk;
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 
-use crate::pipeline::Binding;
-use crate::pipeline::PipelineLayout;
+use super::Binding;
+use super::PipelineLayout;
 
-pub struct PipelineCache {
+pub struct PipelineLayoutCache {
     device: Arc<Device>,
     descriptor_set_layouts: HashMap<DescriptorSetLayoutCreateInfo, Arc<DescriptorSetLayout>>,
     pipeline_layouts: HashMap<PipelineLayoutCreateInfo, Arc<PipelineLayout>>,
@@ -33,7 +33,7 @@ pub struct PipelineLayoutCreateInfo {
     pub push_constant_ranges: Vec<PushConstantRange>,
 }
 
-impl PipelineCache {
+impl PipelineLayoutCache {
     fn create_descriptor_set_layout_inner<'a>(
         device: &'a Arc<Device>,
         map: &'a mut HashMap<DescriptorSetLayoutCreateInfo, Arc<DescriptorSetLayout>>,

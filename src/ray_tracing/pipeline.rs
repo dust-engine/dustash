@@ -1,5 +1,7 @@
-use super::cache::{DescriptorSetLayoutCreateInfo, PipelineCache, PipelineLayoutCreateInfo};
 use super::sbt::{HitGroupType, SbtHandles, SbtLayout};
+use crate::pipeline::layout_cache::{
+    DescriptorSetLayoutCreateInfo, PipelineLayoutCache, PipelineLayoutCreateInfo,
+};
 use crate::pipeline::utils::ShaderDescriptorSetCollection;
 use crate::pipeline::{Binding, Pipeline, PipelineLayout};
 use crate::shader::SpecializedShader;
@@ -86,7 +88,7 @@ pub struct RayTracingPipelineLayout<'a> {
 impl RayTracingPipeline {
     pub fn create_from_shaders(
         loader: Arc<RayTracingLoader>,
-        pipeline_cache: &mut PipelineCache,
+        layout_cache: &mut PipelineLayoutCache,
         sbt_layouts: &[SbtLayout],
     ) -> VkResult<Vec<Self>> {
         let pipeline_layouts: Vec<_> = sbt_layouts
@@ -115,7 +117,7 @@ impl RayTracingPipeline {
                     })
                     .collect();
                 let pipeline_layout =
-                    pipeline_cache.create_pipeline_layout(PipelineLayoutCreateInfo {
+                    layout_cache.create_pipeline_layout(PipelineLayoutCreateInfo {
                         flags: vk::PipelineLayoutCreateFlags::empty(),
                         set_layouts, // TODO: avoid a clone here maybe?
                         push_constant_ranges: Vec::new(),
