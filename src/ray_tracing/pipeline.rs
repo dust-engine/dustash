@@ -95,10 +95,9 @@ impl RayTracingPipeline {
             .iter()
             .map(|sbt_layout| {
                 let mut descriptor_sets = ShaderDescriptorSetCollection::new(); // The full pipeline descriptors
-                descriptor_sets.merge(
-                    &sbt_layout.raygen_shader.shader,
-                    vk::ShaderStageFlags::RAYGEN_KHR,
-                );
+                for raygen_shader in sbt_layout.raygen_shaders.iter() {
+                    descriptor_sets.merge(&raygen_shader.shader, vk::ShaderStageFlags::RAYGEN_KHR);
+                }
                 for miss_shader in sbt_layout.miss_shaders.iter() {
                     descriptor_sets.merge(&miss_shader.shader, vk::ShaderStageFlags::MISS_KHR);
                 }
@@ -199,38 +198,39 @@ impl RayTracingPipeline {
 
                 // A list of vk::PipelineShaderStageCreateInfo containing non-repeating shader module stages
                 // with one RayGen shader first, multiple RayMiss shaders, and multiple hitgroup shaders.
-                let sbt_stages = std::iter::once(create_stage(
-                    &layout.sbt_layout.raygen_shader,
-                    vk::ShaderStageFlags::RAYGEN_KHR,
-                ))
-                .chain(
-                    layout
-                        .sbt_layout
-                        .miss_shaders
-                        .iter()
-                        .map(|module| create_stage(module, vk::ShaderStageFlags::MISS_KHR)),
-                )
-                .chain(
-                    layout
-                        .sbt_layout
-                        .callable_shaders
-                        .iter()
-                        .map(|module| create_stage(module, vk::ShaderStageFlags::CALLABLE_KHR)),
-                )
-                .chain(
-                    layout
-                        .sbt_layout
-                        .hitgroup_shaders
-                        .iter()
-                        .map(|(stage, module)| create_stage(module, *stage)),
-                )
-                .map(|(mut create_info, specialization_info)| {
-                    // specialization_infos cannot be reallocated, since RayTracingPipelineCreateInfoKHR retains a pointer into this array
-                    debug_assert!(specialization_infos.len() < specialization_infos.capacity());
-                    specialization_infos.push(specialization_info);
-                    create_info.p_specialization_info = specialization_infos.last().unwrap();
-                    create_info
-                });
+                let sbt_stages = layout
+                    .sbt_layout
+                    .raygen_shaders
+                    .iter()
+                    .map(|module| create_stage(module, vk::ShaderStageFlags::RAYGEN_KHR))
+                    .chain(
+                        layout
+                            .sbt_layout
+                            .miss_shaders
+                            .iter()
+                            .map(|module| create_stage(module, vk::ShaderStageFlags::MISS_KHR)),
+                    )
+                    .chain(
+                        layout
+                            .sbt_layout
+                            .callable_shaders
+                            .iter()
+                            .map(|module| create_stage(module, vk::ShaderStageFlags::CALLABLE_KHR)),
+                    )
+                    .chain(
+                        layout
+                            .sbt_layout
+                            .hitgroup_shaders
+                            .iter()
+                            .map(|(stage, module)| create_stage(module, *stage)),
+                    )
+                    .map(|(mut create_info, specialization_info)| {
+                        // specialization_infos cannot be reallocated, since RayTracingPipelineCreateInfoKHR retains a pointer into this array
+                        debug_assert!(specialization_infos.len() < specialization_infos.capacity());
+                        specialization_infos.push(specialization_info);
+                        create_info.p_specialization_info = specialization_infos.last().unwrap();
+                        create_info
+                    });
                 let stages_range = stages.len()
                     ..stages.len()
                         + 1
@@ -339,6 +339,7 @@ impl RayTracingPipeline {
                     handles: SbtHandles::new(
                         &loader,
                         pipeline,
+                        layout.sbt_layout.raygen_shaders.len() as u32,
                         layout.sbt_layout.miss_shaders.len() as u32,
                         layout.sbt_layout.callable_shaders.len() as u32,
                         layout.sbt_layout.hitgroups.len() as u32,

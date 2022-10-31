@@ -13,7 +13,7 @@ use vk_mem::AllocationCreateFlags;
 
 #[derive(Debug)]
 pub struct SbtLayout {
-    pub(super) raygen_shader: SpecializedShader,
+    pub(super) raygen_shaders: Box<[SpecializedShader]>,
     pub(super) miss_shaders: Box<[SpecializedShader]>,
     pub(super) callable_shaders: Box<[SpecializedShader]>,
 
@@ -45,7 +45,7 @@ pub(super) struct HitGroupEntry {
 
 impl SbtLayout {
     pub fn new(
-        raygen_shader: SpecializedShader,
+        raygen_shaders: Box<[SpecializedShader]>,
         miss_shaders: Box<[SpecializedShader]>,
         callable_shaders: Box<[SpecializedShader]>,
         hitgroups: &[HitGroup],
@@ -87,7 +87,7 @@ impl SbtLayout {
             })
             .collect();
         Self {
-            raygen_shader,
+            raygen_shaders,
             miss_shaders,
             callable_shaders,
             hitgroup_shaders,
@@ -100,6 +100,7 @@ pub struct SbtHandles {
     data: Box<[u8]>,
     handle_layout: Layout,
     group_base_alignment: u32,
+    num_raygen: u32,
     num_miss: u32,
     num_callable: u32,
     num_hitgroup: u32,
@@ -108,11 +109,12 @@ impl SbtHandles {
     pub fn new(
         loader: &RayTracingLoader,
         pipeline: vk::Pipeline,
+        num_raygen: u32,
         num_miss: u32,
         num_callable: u32,
         num_hitgroup: u32,
     ) -> VkResult<SbtHandles> {
-        let total_num_groups = num_hitgroup + num_miss + num_callable + 1;
+        let total_num_groups = num_hitgroup + num_miss + num_callable + num_raygen;
         let rtx_properties = &loader.physical_device().properties().ray_tracing;
         let sbt_handles_host_vec = unsafe {
             loader
@@ -134,28 +136,35 @@ impl SbtHandles {
             )
             .unwrap(),
             group_base_alignment: rtx_properties.shader_group_base_alignment,
+            num_raygen,
             num_miss,
             num_callable,
             num_hitgroup,
         })
     }
 
-    fn rgen(&self) -> &[u8] {
-        &self.data[0..self.handle_layout.size()]
+    fn rgen(&self, index: usize) -> &[u8] {
+        let start = self.handle_layout.size() * index;
+        let end = start + self.handle_layout.size();
+        &self.data[start..end]
     }
     fn rmiss(&self, index: usize) -> &[u8] {
-        let start = self.handle_layout.size() * (index + 1);
+        let start = self.handle_layout.size() * (index + self.num_raygen as usize);
         let end = start + self.handle_layout.size();
         &self.data[start..end]
     }
     fn callable(&self, index: usize) -> &[u8] {
-        let start = self.handle_layout.size() * (index + 1 + self.num_miss as usize);
+        let start =
+            self.handle_layout.size() * (index + self.num_raygen as usize + self.num_miss as usize);
         let end = start + self.handle_layout.size();
         &self.data[start..end]
     }
     fn hitgroup(&self, index: usize) -> &[u8] {
         let start = self.handle_layout.size()
-            * (index + self.num_miss as usize + self.num_callable as usize + 1);
+            * (index
+                + self.num_miss as usize
+                + self.num_callable as usize
+                + self.num_raygen as usize);
         let end = start + self.handle_layout.size();
         &self.data[start..end]
     }
@@ -201,7 +210,7 @@ impl Sbt {
     /// ```
     pub fn new<RGEN, RMISS, RHIT, RCALLABLE, RhitIter>(
         pipeline: Arc<RayTracingPipeline>,
-        rgen_data: RGEN,
+        rgen_data: impl IntoIterator<Item = RGEN>,
         rmiss_data: impl IntoIterator<Item = RMISS>,
         callable_data: impl IntoIterator<Item = RCALLABLE>,
         rhit_data: impl IntoIterator<Item = (usize, RHIT), IntoIter = RhitIter>, // Iterator to HitGroup, HitGroup Parameter
@@ -217,10 +226,14 @@ impl Sbt {
     {
         let rhit_data: RhitIter = rhit_data.into_iter();
 
-        let raygen_layout = pipeline
+        let raygen_layout_one = pipeline
             .handles
             .handle_layout
             .extend(Layout::new::<RGEN>())
+            .unwrap()
+            .0;
+        let raygen_layout = raygen_layout_one
+            .repeat(pipeline.handles.num_raygen as usize)
             .unwrap()
             .0
             .align_to(pipeline.handles.group_base_alignment as usize)
@@ -325,12 +338,20 @@ impl Sbt {
             {
                 // Copy raygen records
                 let raygen_slice = &mut target_slice[0..raygen_layout.size()];
-                set_sbt_item(
-                    raygen_slice,
-                    rgen_data,
-                    pipeline.handles.rgen(),
-                    &pipeline.handles.handle_layout,
-                );
+                let mut rgen_data = rgen_data.into_iter();
+                for i in 0..pipeline.handles.num_raygen as usize {
+                    let front = raygen_layout_one.pad_to_align().size() * i;
+                    let back = raygen_layout_one.size() + front;
+                    let current_rgen_slice = &raygen_slice[front..back];
+                    let current_rgen_data =
+                        rgen_data.next().expect("Not enough rgen data provided");
+                    set_sbt_item(
+                        raygen_slice,
+                        current_rgen_data,
+                        pipeline.handles.rgen(i),
+                        &pipeline.handles.handle_layout,
+                    );
+                }
             }
             {
                 // Copy rmiss records
